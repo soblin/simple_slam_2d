@@ -1,0 +1,15 @@
+<package format="3">
+  <name>simple_slam_2d</name>name>
+  <version>0.0.0</version>version>
+  <description>simple_slam_2d</description>description>
+  <maintainer email="mamoru.sobue@tier4.jp">Mamoru Sobue</maintainer>maintainer>
+  <license>TODO</license>license>
+
+  <depend>rclrs</depend>depend>
+  <depend>std_msgs</depend>depend>
+  <depend>nav_msgs</depend>
+
+  <export>
+	<build_type>ament_cargo</build_type>build_type>
+	</export>export>
+</package>

@@ -1,0 +1,26 @@
+[package]
+name = "simple_slam_2d"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "simple_slam_2d"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = {version = "1", features = ["backtrace"]}
+
+[dependencies.rclrs]
+version = "*"
+
+[dependencies.rosidl_runtime_rs]
+version = "*"
+
+[dependencies.std_msgs]
+version = "*"
+
+[dependencies.nav_msgs]
+version = "*"
+
+[package.metadata.ros]
+install_to_share = ["dataset"]
