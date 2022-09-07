@@ -1,28 +1,20 @@
-use std::fs::File;
-use std::io::{self, prelude::*, BufReader};
-use std::path::Path;
-use std::process::Command;
+use anyhow::{Error, Result};
+use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // (1) call ros2 pkg prefix --share simple_slam_2d and get path to share directory
-    let cmd = Command::new("ros2")
-        .arg("pkg")
-        .arg("prefix")
-        .arg("--share")
-        .arg("simple_slam_2d")
-        .output()?;
+fn main() -> Result<(), Error> {
+    let context = rclrs::Context::new(env::args())?;
+    let mut node = rclrs::create_node(&context, "minimal_subscriber")?;
+    let mut num_messages: usize = 0;
 
-    let pkg_share_directory = String::from_utf8(cmd.stdout)?;
-    let pkg_share_directory = pkg_share_directory.trim();
+    let _subscription = node.create_subscription::<sensor_msgs::msg::LaserScan, _>(
+        "/burger1_scan",
+        rclrs::QOS_PROFILE_SENSOR_DATA,
+        move |msg: sensor_msgs::msg::LaserScan| {
+            num_messages += 1;
+            println!("I heard: {}", msg.range_min);
+            println!("Got {} messages", num_messages);
+        },
+    )?;
 
-    // (2) then open data/*.lsc
-    let pkg_share_directory = Path::new(&pkg_share_directory);
-    let data_directory = pkg_share_directory.join("dataset");
-    let file_name = String::from("corridor.lsc");
-    let lsc_file_path = data_directory.join(&file_name);
-    let fp = BufReader::new(File::open(lsc_file_path).expect("Unable to open file"));
-    println!("there are {} lines.", fp.lines().count());
-
-    // (3) main loop: iteratively read each line and process them
-    Ok(())
+    rclrs::spin(&node).map_err(|err| err.into())
 }

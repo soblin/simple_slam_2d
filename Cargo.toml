@@ -22,5 +22,8 @@ version = "*"
 [dependencies.nav_msgs]
 version = "*"
 
+[dependencies.sensor_msgs]
+version = "*"
+
 [package.metadata.ros]
 install_to_share = ["dataset"]
