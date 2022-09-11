@@ -62,10 +62,16 @@ impl SimpleSlam2DNode {
         };
         if let Some(odom_msg) = &*self.odom_data.lock().unwrap() {
             println!(
-                "odom's header is: {}-{}",
-                odom_msg.header.stamp.sec, odom_msg.header.stamp.nanosec
+                "cur_time header is: {}-{}",
+                map_msg.header.stamp.sec, map_msg.header.stamp.nanosec
             );
+            map_msg.header.stamp = odom_msg.header.stamp.clone();
+            map_msg.header.frame_id = String::from("burger1_odom");
             map_msg.info.origin = odom_msg.pose.pose.clone();
+            map_msg.info.resolution = 0.5;
+            map_msg.info.width = 40;
+            map_msg.info.height = 40;
+            map_msg.data = vec![0; 1600];
             self.map_pub.publish(map_msg)?;
         }
         Ok(())
