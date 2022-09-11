@@ -16,6 +16,9 @@ version = "*"
 [dependencies.rosidl_runtime_rs]
 version = "*"
 
+[dependencies.builtin_interfaces]
+version = "*"
+
 [dependencies.std_msgs]
 version = "*"
 
