@@ -80,9 +80,8 @@ fn main() -> Result<(), rclrs::RclrsError> {
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
         loop {
             use std::time::Duration;
-            std::thread::sleep(Duration::from_millis(1000));
-            // does not compile
-            // simple_slam_2d_node_other_thread.publish()?;
+            std::thread::sleep(Duration::from_millis(100));
+            simple_slam_2d_node_other_thread.publish()?;
         }
     });
     rclrs::spin(&simple_slam_2d_node.node).map_err(|err| err.into())
