@@ -16,9 +16,11 @@ pub struct SimpleSlam2DNode {
     map_pub: rclrs::Publisher<nav_msgs::msg::OccupancyGrid>,
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
+    last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
     params: SimpleSlam2DParams,
 }
 
+//
 impl SimpleSlam2DNode {
     fn new(context: &rclrs::Context, param_path: &str) -> Result<Self, Box<dyn Error>> {
         // load param yaml
@@ -32,6 +34,9 @@ impl SimpleSlam2DNode {
         };
         // init node
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
+        // check scan data frequency
+        let last_scan_tm_data = Arc::new(Mutex::new(std::time::Instant::now()));
+        let last_scan_tm_data_cb = Arc::clone(&last_scan_tm_data);
         // scan sub
         let scan_data = Arc::new(Mutex::new(None));
         let scan_data_cb = Arc::clone(&scan_data);
@@ -41,6 +46,10 @@ impl SimpleSlam2DNode {
                 rclrs::QOS_PROFILE_SENSOR_DATA,
                 move |msg: sensor_msgs::msg::LaserScan| {
                     *scan_data_cb.lock().unwrap() = Some(msg);
+                    let now_tm = std::time::Instant::now();
+                    let mut last_tm = last_scan_tm_data_cb.lock().unwrap();
+                    println!("elapsed time is {:?}", now_tm - *last_tm);
+                    *last_tm = now_tm;
                 },
             )?
         };
@@ -66,6 +75,7 @@ impl SimpleSlam2DNode {
             map_pub,
             scan_data,
             odom_data,
+            last_scan_tm_data,
             params,
         })
     }
@@ -80,10 +90,6 @@ impl SimpleSlam2DNode {
             nanosec: cur_time.subsec_nanos() as u32,
         };
         if let Some(odom_msg) = &*self.odom_data.lock().unwrap() {
-            println!(
-                "cur_time header is: {}-{}",
-                map_msg.header.stamp.sec, map_msg.header.stamp.nanosec
-            );
             map_msg.header.frame_id = String::from(&self.params.map_frame_id);
             map_msg.info.origin = odom_msg.pose.pose.clone();
             map_msg.info.resolution = 0.5;
