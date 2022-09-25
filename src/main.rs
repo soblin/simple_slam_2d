@@ -115,9 +115,11 @@ impl SimpleSlam2DNode {
         let angle_max = scan.angle_max;
         let angle_increment = scan.angle_increment;
         // push points in odom frame
-        // TODO: invalid scan's range value is inf, so should be ignored
         let mut new_map_points = Vec::new();
         for (i, range) in ranges.iter().enumerate() {
+            if *range == std::f32::INFINITY {
+                continue;
+            }
             let theta: f32 = angle_min + (i as f32) * angle_increment;
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
