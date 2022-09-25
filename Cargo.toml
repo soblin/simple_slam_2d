@@ -32,4 +32,4 @@ version = "*"
 version = "*"
 
 [package.metadata.ros]
-install_to_share = ["dataset"]
+install_to_share = ["config"]

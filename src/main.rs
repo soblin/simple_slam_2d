@@ -1,6 +1,6 @@
-use std::env;
-use std::result::Result;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::{error::Error, result::Result};
 
 struct SimpleSlam2DNode {
     node: rclrs::Node,
@@ -12,7 +12,8 @@ struct SimpleSlam2DNode {
 }
 
 impl SimpleSlam2DNode {
-    fn new(context: &rclrs::Context) -> Result<Self, rclrs::RclrsError> {
+    fn new(context: &rclrs::Context, param_path: &str) -> Result<Self, rclrs::RclrsError> {
+        // TODO load yaml
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // scan sub
         let scan_data = Arc::new(Mutex::new(None));
@@ -78,9 +79,16 @@ impl SimpleSlam2DNode {
     }
 }
 
-fn main() -> Result<(), rclrs::RclrsError> {
-    let context = rclrs::Context::new(env::args())?;
-    let simple_slam_2d_node = Arc::new(SimpleSlam2DNode::new(&context)?);
+fn main() -> Result<(), Box<dyn Error>> {
+    let ctx = rclrs::Context::new(std::env::args())?;
+
+    // path to /config/param.yaml
+    let pkg_share_directory = simple_slam_2d::get_package_share_directory("simple_slam_2d")?;
+    let param_path = Path::new(&pkg_share_directory)
+        .join("config")
+        .join("param.yaml");
+    let param_path = param_path.into_os_string().into_string().unwrap();
+    let simple_slam_2d_node = Arc::new(SimpleSlam2DNode::new(&ctx, &param_path)?);
     let simple_slam_2d_node_other_thread = Arc::clone(&simple_slam_2d_node);
 
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {

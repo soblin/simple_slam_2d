@@ -1,0 +1,4 @@
+input_scan: "/burger1_scan"
+input_odom: "/burger1_odom"
+output_map: "/burger1_map"
+map_frame_id: "burger1_odom"
