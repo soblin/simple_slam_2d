@@ -22,7 +22,7 @@ pub struct SimpleSlam2DNode {
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
     last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
-    map_points: Vec<Point2D>,
+    map_points_data: Arc<Mutex<Vec<Point2D>>>,
     params: SimpleSlam2DParams,
 }
 
@@ -73,7 +73,7 @@ impl SimpleSlam2DNode {
             )?
         };
         // map_points
-        let map_points = Vec::new();
+        let map_points_data = Arc::new(Mutex::new(Vec::new()));
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
@@ -84,7 +84,7 @@ impl SimpleSlam2DNode {
             scan_data,
             odom_data,
             last_scan_tm_data,
-            map_points,
+            map_points_data,
             params,
         })
     }
@@ -133,13 +133,12 @@ impl SimpleSlam2DNode {
             let theta: f32 = angle_min + (i as f32) * angle_increment;
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
-            // this mutation is problematic
-            /*
-            self.map_points.push(Point2D {
+            // compiles, but calling lock() in every iteration?
+            let mut map_points = self.map_points_data.lock().unwrap();
+            map_points.push(Point2D {
                 x: x_glob,
                 y: y_glob,
             });
-             */
         }
     }
 }
