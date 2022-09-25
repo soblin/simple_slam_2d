@@ -89,7 +89,11 @@ impl SimpleSlam2DNode {
             sec: cur_time.as_secs() as i32,
             nanosec: cur_time.subsec_nanos() as u32,
         };
-        if let Some(odom_msg) = &*self.odom_data.lock().unwrap() {
+        if let (Some(odom_msg), Some(scan_msg)) = (
+            &*self.odom_data.lock().unwrap(),
+            &*self.scan_data.lock().unwrap(),
+        ) {
+            self.odom_slam(&odom_msg.pose.pose, &scan_msg);
             map_msg.header.frame_id = String::from(&self.params.map_frame_id);
             map_msg.info.origin = odom_msg.pose.pose.clone();
             map_msg.info.resolution = 0.5;
@@ -99,6 +103,20 @@ impl SimpleSlam2DNode {
             self.map_pub.publish(map_msg)?;
         }
         Ok(())
+    }
+    fn odom_slam(&self, pose: &geometry_msgs::msg::Pose, scan: &sensor_msgs::msg::LaserScan) {
+        // place Laserscan along the odometry naively
+        let position: &geometry_msgs::msg::Point = &pose.position;
+        let quat: &geometry_msgs::msg::Quaternion = &pose.orientation;
+        let ranges: &Vec<f32> = &scan.ranges;
+        let angle_min = scan.angle_min;
+        let angle_max = scan.angle_max;
+        let angle_increment = scan.angle_increment;
+        println!(
+            "#angles = {}, #ranges = {}",
+            ((angle_max - angle_min) / angle_increment) as i64,
+            ranges.len()
+        ); // this should be 359 and 360
     }
 }
 
