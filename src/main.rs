@@ -2,6 +2,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error::Error, result::Result};
 
+pub struct Point2D {
+    pub x: f32,
+    pub y: f32,
+}
+
 pub struct SimpleSlam2DParams {
     pub input_scan: String,
     pub input_odom: String,
@@ -13,10 +18,11 @@ pub struct SimpleSlam2DNode {
     node: rclrs::Node,
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
     odom_sub: Arc<rclrs::Subscription<nav_msgs::msg::Odometry>>,
-    map_pub: rclrs::Publisher<nav_msgs::msg::OccupancyGrid>,
+    map_pub: rclrs::Publisher<sensor_msgs::msg::LaserScan>,
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
     last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
+    map_points: Vec<Point2D>,
     params: SimpleSlam2DParams,
 }
 
@@ -66,6 +72,8 @@ impl SimpleSlam2DNode {
                 },
             )?
         };
+        // map_points
+        let map_points = Vec::new();
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
@@ -76,11 +84,12 @@ impl SimpleSlam2DNode {
             scan_data,
             odom_data,
             last_scan_tm_data,
+            map_points,
             params,
         })
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        let mut map_msg = nav_msgs::msg::OccupancyGrid::default();
+        let mut map_msg = sensor_msgs::msg::LaserScan::default();
         let cur_time = std::time::SystemTime::now();
         let cur_time = cur_time
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -94,6 +103,7 @@ impl SimpleSlam2DNode {
             &*self.scan_data.lock().unwrap(),
         ) {
             self.odom_slam(&odom_msg.pose.pose, &scan_msg);
+            /*
             map_msg.header.frame_id = String::from(&self.params.map_frame_id);
             map_msg.info.origin = odom_msg.pose.pose.clone();
             map_msg.info.resolution = 0.5;
@@ -101,6 +111,7 @@ impl SimpleSlam2DNode {
             map_msg.info.height = 40;
             map_msg.data = vec![0; 1600];
             self.map_pub.publish(map_msg)?;
+             */
         }
         Ok(())
     }
@@ -109,6 +120,7 @@ impl SimpleSlam2DNode {
         let position: &geometry_msgs::msg::Point = &pose.position;
         let quat: &geometry_msgs::msg::Quaternion = &pose.orientation;
         let ranges: &Vec<f32> = &scan.ranges;
+        // these are in radian
         let angle_min = scan.angle_min;
         let angle_max = scan.angle_max;
         let angle_increment = scan.angle_increment;
@@ -117,6 +129,18 @@ impl SimpleSlam2DNode {
             ((angle_max - angle_min) / angle_increment) as i64,
             ranges.len()
         ); // this should be 359 and 360
+        for (i, range) in ranges.iter().enumerate() {
+            let theta: f32 = angle_min + (i as f32) * angle_increment;
+            let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
+            let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
+            // this mutation is problematic
+            /*
+            self.map_points.push(Point2D {
+                x: x_glob,
+                y: y_glob,
+            });
+             */
+        }
     }
 }
 
@@ -129,6 +153,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .join("config")
         .join("param.yaml");
     let param_path = param_path.into_os_string().into_string().unwrap();
+
+    // init node
     let simple_slam_2d_node = Arc::new(SimpleSlam2DNode::new(&ctx, &param_path)?);
     let simple_slam_2d_node_other_thread = Arc::clone(&simple_slam_2d_node);
 
