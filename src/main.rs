@@ -83,29 +83,25 @@ impl SimpleSlam2DNode {
         })
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        let mut map_msg = sensor_msgs::msg::LaserScan::default();
-        let cur_time = std::time::SystemTime::now();
-        let cur_time = cur_time
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap();
-        map_msg.header.stamp = builtin_interfaces::msg::Time {
-            sec: cur_time.as_secs() as i32,
-            nanosec: cur_time.subsec_nanos() as u32,
-        };
         if let (Some(odom_msg), Some(scan_msg)) = (
             &*self.odom_data.lock().unwrap(),
             &*self.scan_data.lock().unwrap(),
         ) {
             self.odom_slam(&odom_msg.pose.pose, &scan_msg);
-            /*
+            let mut map_msg = sensor_msgs::msg::PointCloud::default();
+            let cur_time = std::time::SystemTime::now();
+            let cur_time = cur_time
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap();
+            map_msg.header.stamp = builtin_interfaces::msg::Time {
+                sec: cur_time.as_secs() as i32,
+                nanosec: cur_time.subsec_nanos() as u32,
+            };
             map_msg.header.frame_id = String::from(&self.params.map_frame_id);
-            map_msg.info.origin = odom_msg.pose.pose.clone();
-            map_msg.info.resolution = 0.5;
-            map_msg.info.width = 40;
-            map_msg.info.height = 40;
-            map_msg.data = vec![0; 1600];
-            self.map_pub.publish(map_msg)?;
-             */
+            let map_points = self.map_points_data.lock().unwrap();
+            map_msg.points = map_points.clone();
+            // TODO: channel data must be filled, and we should only push_back valid scan points.
+            // self.map_pub.publish(map_msg)?;
         }
         Ok(())
     }
@@ -119,6 +115,7 @@ impl SimpleSlam2DNode {
         let angle_max = scan.angle_max;
         let angle_increment = scan.angle_increment;
         // push points in odom frame
+        // TODO: invalid scan's range value is inf, so should be ignored
         let mut new_map_points = Vec::new();
         for (i, range) in ranges.iter().enumerate() {
             let theta: f32 = angle_min + (i as f32) * angle_increment;
