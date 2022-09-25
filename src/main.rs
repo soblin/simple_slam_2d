@@ -2,11 +2,6 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error::Error, result::Result};
 
-pub struct Point2D {
-    pub x: f32,
-    pub y: f32,
-}
-
 pub struct SimpleSlam2DParams {
     pub input_scan: String,
     pub input_odom: String,
@@ -18,11 +13,11 @@ pub struct SimpleSlam2DNode {
     node: rclrs::Node,
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
     odom_sub: Arc<rclrs::Subscription<nav_msgs::msg::Odometry>>,
-    map_pub: rclrs::Publisher<sensor_msgs::msg::LaserScan>,
+    map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
     last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
-    map_points_data: Arc<Mutex<Vec<Point2D>>>,
+    map_points_data: Arc<Mutex<Vec<geometry_msgs::msg::Point32>>>,
     params: SimpleSlam2DParams,
 }
 
@@ -123,19 +118,16 @@ impl SimpleSlam2DNode {
         let angle_min = scan.angle_min;
         let angle_max = scan.angle_max;
         let angle_increment = scan.angle_increment;
-        println!(
-            "#angles = {}, #ranges = {}",
-            ((angle_max - angle_min) / angle_increment) as i64,
-            ranges.len()
-        ); // this should be 359 and 360
+        // push points in odom frame
         let mut new_map_points = Vec::new();
         for (i, range) in ranges.iter().enumerate() {
             let theta: f32 = angle_min + (i as f32) * angle_increment;
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
-            new_map_points.push(Point2D {
+            new_map_points.push(geometry_msgs::msg::Point32 {
                 x: x_glob,
                 y: y_glob,
+                z: 0.0,
             });
         }
         let mut map_points = self.map_points_data.lock().unwrap();
