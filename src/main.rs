@@ -2,25 +2,42 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error::Error, result::Result};
 
-struct SimpleSlam2DNode {
+pub struct SimpleSlam2DParams {
+    pub input_scan: String,
+    pub input_odom: String,
+    pub output_map: String,
+    pub map_frame_id: String,
+}
+
+pub struct SimpleSlam2DNode {
     node: rclrs::Node,
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
     odom_sub: Arc<rclrs::Subscription<nav_msgs::msg::Odometry>>,
     map_pub: rclrs::Publisher<nav_msgs::msg::OccupancyGrid>,
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
+    params: SimpleSlam2DParams,
 }
 
 impl SimpleSlam2DNode {
-    fn new(context: &rclrs::Context, param_path: &str) -> Result<Self, rclrs::RclrsError> {
-        // TODO load yaml
+    fn new(context: &rclrs::Context, param_path: &str) -> Result<Self, Box<dyn Error>> {
+        // load param yaml
+        let docs = simple_slam_2d::load_config(param_path)?;
+        let doc = &docs[0];
+        let params = SimpleSlam2DParams {
+            input_scan: doc["input_scan"].as_str().unwrap().to_string(),
+            input_odom: doc["input_odom"].as_str().unwrap().to_string(),
+            output_map: doc["output_map"].as_str().unwrap().to_string(),
+            map_frame_id: doc["map_frame_id"].as_str().unwrap().to_string(),
+        };
+        // init node
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // scan sub
         let scan_data = Arc::new(Mutex::new(None));
         let scan_data_cb = Arc::clone(&scan_data);
         let scan_sub = {
             node.create_subscription(
-                "/burger1_scan",
+                &params.input_scan,
                 rclrs::QOS_PROFILE_SENSOR_DATA,
                 move |msg: sensor_msgs::msg::LaserScan| {
                     *scan_data_cb.lock().unwrap() = Some(msg);
@@ -32,7 +49,7 @@ impl SimpleSlam2DNode {
         let odom_data_cb = Arc::clone(&odom_data);
         let odom_sub = {
             node.create_subscription(
-                "/burger1_odom",
+                &params.input_odom,
                 rclrs::QOS_PROFILE_DEFAULT,
                 move |msg: nav_msgs::msg::Odometry| {
                     // let position: &geometry_msgs::msg::Point = &msg.pose.pose.position;
@@ -41,7 +58,7 @@ impl SimpleSlam2DNode {
             )?
         };
         // map pub
-        let map_pub = node.create_publisher("/burger1_map", rclrs::QOS_PROFILE_SENSOR_DATA)?;
+        let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
             node,
             scan_sub,
@@ -49,6 +66,7 @@ impl SimpleSlam2DNode {
             map_pub,
             scan_data,
             odom_data,
+            params,
         })
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
@@ -66,8 +84,7 @@ impl SimpleSlam2DNode {
                 "cur_time header is: {}-{}",
                 map_msg.header.stamp.sec, map_msg.header.stamp.nanosec
             );
-            map_msg.header.stamp = odom_msg.header.stamp.clone();
-            map_msg.header.frame_id = String::from("burger1_odom");
+            map_msg.header.frame_id = String::from(&self.params.map_frame_id);
             map_msg.info.origin = odom_msg.pose.pose.clone();
             map_msg.info.resolution = 0.5;
             map_msg.info.width = 40;
