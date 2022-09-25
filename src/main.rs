@@ -67,7 +67,6 @@ impl SimpleSlam2DNode {
                 &params.input_odom,
                 rclrs::QOS_PROFILE_DEFAULT,
                 move |msg: nav_msgs::msg::Odometry| {
-                    // let position: &geometry_msgs::msg::Point = &msg.pose.pose.position;
                     *odom_data_cb.lock().unwrap() = Some(msg);
                 },
             )?
@@ -129,17 +128,18 @@ impl SimpleSlam2DNode {
             ((angle_max - angle_min) / angle_increment) as i64,
             ranges.len()
         ); // this should be 359 and 360
+        let mut new_map_points = Vec::new();
         for (i, range) in ranges.iter().enumerate() {
             let theta: f32 = angle_min + (i as f32) * angle_increment;
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
-            // compiles, but calling lock() in every iteration?
-            let mut map_points = self.map_points_data.lock().unwrap();
-            map_points.push(Point2D {
+            new_map_points.push(Point2D {
                 x: x_glob,
                 y: y_glob,
             });
         }
+        let mut map_points = self.map_points_data.lock().unwrap();
+        map_points.append(&mut new_map_points);
     }
 }
 
