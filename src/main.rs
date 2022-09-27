@@ -17,7 +17,7 @@ pub struct SimpleSlam2DNode {
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
     last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
-    map_points_data: Arc<Mutex<Vec<geometry_msgs::msg::Point32>>>,
+    map_msg_data: Arc<Mutex<sensor_msgs::msg::PointCloud>>,
     params: SimpleSlam2DParams,
 }
 
@@ -67,7 +67,14 @@ impl SimpleSlam2DNode {
             )?
         };
         // map_points
-        let map_points_data = Arc::new(Mutex::new(Vec::new()));
+        let map_msg_data = Arc::new(Mutex::new(sensor_msgs::msg::PointCloud {
+            header: std_msgs::msg::Header::default(),
+            points: Vec::new(),
+            channels: vec![sensor_msgs::msg::ChannelFloat32 {
+                name: String::from("rgb"),
+                values: Vec::new(),
+            }],
+        }));
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
@@ -78,7 +85,7 @@ impl SimpleSlam2DNode {
             scan_data,
             odom_data,
             last_scan_tm_data,
-            map_points_data,
+            map_msg_data,
             params,
         })
     }
@@ -87,21 +94,20 @@ impl SimpleSlam2DNode {
             &*self.odom_data.lock().unwrap(),
             &*self.scan_data.lock().unwrap(),
         ) {
+            // process self.map_msg_data
             self.odom_slam(&odom_msg.pose.pose, &scan_msg);
-            let mut map_msg = sensor_msgs::msg::PointCloud::default();
-            let cur_time = std::time::SystemTime::now();
-            let cur_time = cur_time
+            // update self.map_msg_data
+            let mut map_msg = self.map_msg_data.lock().unwrap();
+            let cur_time = std::time::SystemTime::now()
                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                 .unwrap();
+            map_msg.header.frame_id = String::from(&self.params.map_frame_id);
             map_msg.header.stamp = builtin_interfaces::msg::Time {
                 sec: cur_time.as_secs() as i32,
                 nanosec: cur_time.subsec_nanos() as u32,
             };
-            map_msg.header.frame_id = String::from(&self.params.map_frame_id);
-            let map_points = self.map_points_data.lock().unwrap();
-            map_msg.points = map_points.clone();
-            // TODO: channel data must be filled, and we should only push_back valid scan points.
-            // self.map_pub.publish(map_msg)?;
+            println!("points size is {} as of now.", map_msg.points.len());
+            self.map_pub.publish(map_msg.clone())?;
         }
         Ok(())
     }
@@ -115,7 +121,8 @@ impl SimpleSlam2DNode {
         let angle_max = scan.angle_max;
         let angle_increment = scan.angle_increment;
         // push points in odom frame
-        let mut new_map_points = Vec::new();
+        let mut new_points = Vec::new();
+        let mut new_channel_values = Vec::new();
         for (i, range) in ranges.iter().enumerate() {
             if *range == std::f32::INFINITY {
                 continue;
@@ -123,14 +130,21 @@ impl SimpleSlam2DNode {
             let theta: f32 = angle_min + (i as f32) * angle_increment;
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
-            new_map_points.push(geometry_msgs::msg::Point32 {
+            new_points.push(geometry_msgs::msg::Point32 {
                 x: x_glob,
                 y: y_glob,
                 z: 0.0,
             });
+            let (r, g, b) = (200, 10, 10);
+            let color: u32 = r << 16 | g << 8 | b;
+            let color_float: *const f32 = &color as *const u32 as *const f32;
+            unsafe {
+                new_channel_values.push(*color_float);
+            }
         }
-        let mut map_points = self.map_points_data.lock().unwrap();
-        map_points.append(&mut new_map_points);
+        let mut map_msg = self.map_msg_data.lock().unwrap();
+        map_msg.points.append(&mut new_points);
+        map_msg.channels[0].values.append(&mut new_channel_values);
     }
 }
 
@@ -151,7 +165,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
         loop {
             use std::time::Duration;
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(500));
             simple_slam_2d_node_other_thread.publish()?;
         }
     });
