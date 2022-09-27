@@ -16,7 +16,6 @@ pub struct SimpleSlam2DNode {
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
     scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
     odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
-    last_scan_tm_data: Arc<Mutex<std::time::Instant>>,
     map_msg_data: Arc<Mutex<sensor_msgs::msg::PointCloud>>,
     params: SimpleSlam2DParams,
 }
@@ -35,9 +34,6 @@ impl SimpleSlam2DNode {
         };
         // init node
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
-        // check scan data frequency
-        let last_scan_tm_data = Arc::new(Mutex::new(std::time::Instant::now()));
-        let last_scan_tm_data_cb = Arc::clone(&last_scan_tm_data);
         // scan sub
         let scan_data = Arc::new(Mutex::new(None));
         let scan_data_cb = Arc::clone(&scan_data);
@@ -47,10 +43,6 @@ impl SimpleSlam2DNode {
                 rclrs::QOS_PROFILE_SENSOR_DATA,
                 move |msg: sensor_msgs::msg::LaserScan| {
                     *scan_data_cb.lock().unwrap() = Some(msg);
-                    let now_tm = std::time::Instant::now();
-                    let mut last_tm = last_scan_tm_data_cb.lock().unwrap();
-                    println!("elapsed time is {:?}", now_tm - *last_tm);
-                    *last_tm = now_tm;
                 },
             )?
         };
@@ -84,7 +76,6 @@ impl SimpleSlam2DNode {
             map_pub,
             scan_data,
             odom_data,
-            last_scan_tm_data,
             map_msg_data,
             params,
         })
@@ -116,6 +107,9 @@ impl SimpleSlam2DNode {
         let position: &geometry_msgs::msg::Point = &pose.position;
         let quat: &geometry_msgs::msg::Quaternion = &pose.orientation;
         let ranges: &Vec<f32> = &scan.ranges;
+        let yaw =
+            simple_slam_2d::quat2rpy(&[quat.x as f32, quat.y as f32, quat.z as f32, quat.w as f32])
+                [0];
         // these are in radian
         let angle_min = scan.angle_min;
         let angle_max = scan.angle_max;
@@ -127,7 +121,7 @@ impl SimpleSlam2DNode {
             if *range == std::f32::INFINITY {
                 continue;
             }
-            let theta: f32 = angle_min + (i as f32) * angle_increment;
+            let theta: f32 = yaw + (angle_min + (i as f32) * angle_increment);
             let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
             let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
             new_points.push(geometry_msgs::msg::Point32 {
