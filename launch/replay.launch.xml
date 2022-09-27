@@ -1,0 +1,19 @@
+<launch>
+  <arg name="model" default="burger"/>
+  <arg name="robot_namespace" default="burger1"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="x_pos" default="-3.0"/>
+  <arg name="y_pos" default="0.0"/>
+  <arg name="z_pos" default="0.0"/>
+
+  <include file="$(find-pkg-share turtlebot3_multi_nav)/launch/bringup_robot.launch.py">
+	<arg name="model" value="$(var model)"/>
+	<arg name="robot_namespace" value="$(var robot_namespace)"/>
+	<arg name="use_sim_time" value="$(var use_sim_time)"/>
+	<arg name="x_pos" value="$(var x_pos)"/>
+	<arg name="y_pos" value="$(var y_pos)"/>
+	<arg name="z_pos" value="$(var z_pos)"/>
+  </include>
+
+  <node name="rviz" exec="rviz2" pkg="rviz2" args="-d $(find-pkg-share simple_slam_2d)/rviz/sim_$(var model).rviz"/>
+</launch>

@@ -8,7 +8,7 @@ naive ICP scan matching SLAM written in Rust.
 - [ros2_rust](https://github.com/ros2-rust/ros2_rust)
 - [turtlebot3_custom](https://github.com/soblin/turtlebot3_nav)
 
-## launch
+## online mapping
 
 1. Launch the simulator
 ```
@@ -20,8 +20,15 @@ ros2 run turtlebot3_multi_nav teleop_keyboard.py --ros-args -p robot_namespace:=
 ```
 3. Run the node
 ```
-ros2 run simple_slam_2d simple_slam_2d OR
-cargo run
+ros2 run simple_slam_2d simple_slam_2d OR cargo run
+```
+
+## offline mapping
+
+```
+ros2 launch simple_slam_2d replay.launch
+ros2 run simple_slam_2d simple_slam_2d OR cargo run
+
 ```
 
 ## input/output
