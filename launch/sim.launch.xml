@@ -3,7 +3,8 @@
   <arg name="model" default="burger"/>
   <arg name="robot_namespace" default="burger1"/>
   <arg name="use_sim_time" default="true"/>
-  <arg name="x_pos" default="-3.0"/>
+  <!-- simple_slam_2d node assumes this initial pose -->
+  <arg name="x_pos" default="0.0"/>
   <arg name="y_pos" default="0.0"/>
   <arg name="z_pos" default="0.0"/>
 
