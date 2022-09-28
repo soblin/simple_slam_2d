@@ -14,7 +14,7 @@ pub struct SimpleSlam2DParams {
 pub struct Pose2D {
     pub x: f32,
     pub y: f32,
-    pub theta: f32,
+    pub th: f32,
 }
 
 pub struct SimpleSlam2D {
@@ -34,18 +34,56 @@ impl SimpleSlam2D {
         self.twist = twist;
     }
     fn odom_mapping(&mut self) {
+        // measure processing time
+        let process_tm = std::time::Instant::now();
+        // new position
+        // NOTE: assume constant velocity
         let dt = self.pose_stamp.elapsed().as_millis() as f32 / 1000.0;
         let (v, omega) = (self.twist.linear.x as f32, self.twist.angular.z as f32);
-        let (dx, dy, dtheta) = (
-            v * (self.pose.theta + omega * dt).cos() as f32,
-            v * (self.pose.theta + omega * dt).sin() as f32,
+        let (dx, dy, dth) = (
+            v * (self.pose.th + omega * dt).cos() as f32,
+            v * (self.pose.th + omega * dt).sin() as f32,
             omega * dt as f32,
         );
-        let new_pose = Pose2D {
+        let pose = Pose2D {
             x: self.pose.x + dx,
             y: self.pose.y + dy,
-            theta: self.pose.theta + dtheta,
+            th: self.pose.th + dth,
         };
+        // these are in radian
+        let angle_min = self.scan.angle_min;
+        let angle_max = self.scan.angle_max;
+        let angle_increment = self.scan.angle_increment;
+        // get new points
+        let mut new_points = vec![];
+        let mut new_channels = vec![];
+        for (i, range) in self.scan.ranges.iter().enumerate() {
+            if *range == std::f32::INFINITY {
+                continue;
+            }
+            let th: f32 = pose.th + (angle_min + (i as f32) * angle_increment);
+            let x_glob: f32 = pose.x + range * th.cos();
+            let y_glob: f32 = pose.y + range * th.sin();
+            new_points.push(geometry_msgs::msg::Point32 {
+                x: x_glob,
+                y: y_glob,
+                z: 0.0,
+            });
+            // TODO: change color based on timestamp ?
+            let (r, g, b) = (200, 10, 10);
+            let color: u32 = r << 16 | g << 8 | b;
+            let color_float: *const f32 = &color as *const u32 as *const f32;
+            unsafe {
+                new_channels.push(*color_float);
+            }
+        }
+        // update
+        self.points.append(&mut new_points);
+        self.channels.append(&mut new_channels);
+        self.pose = pose;
+        self.pose_stamp = std::time::Instant::now();
+        // print processing time
+        println!("Processing time: {}", process_tm.elapsed().as_millis());
     }
 }
 
