@@ -1,6 +1,5 @@
 pub struct SimpleSlam2DParams {
     pub input_scan: String,
-    pub input_odom: String,
     pub input_cmd: String,
     pub output_map: String,
     pub output_odom: String,

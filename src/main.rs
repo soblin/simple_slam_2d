@@ -78,7 +78,6 @@ impl SimpleSlam2DNode {
         let doc = &docs[0];
         let params = simple_slam_2d::param::SimpleSlam2DParams {
             input_scan: doc["input_scan"].as_str().unwrap().to_string(),
-            input_odom: doc["input_odom"].as_str().unwrap().to_string(),
             input_cmd: doc["input_cmd"].as_str().unwrap().to_string(),
             output_map: doc["output_map"].as_str().unwrap().to_string(),
             output_odom: doc["output_odom"].as_str().unwrap().to_string(),

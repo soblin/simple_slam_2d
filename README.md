@@ -43,10 +43,10 @@ ros2 run simple_slam_2d simple_slam_2d OR cargo run
 
 - input
   - sensor_msgs::LaserScan
-  - nav_msgs::Odometry
   - geometry_msgs::Twist
 - output
   - sensor_msgs::PointCloud
+  - nav_msgs::Odometry
 
 ## result
 
