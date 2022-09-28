@@ -5,18 +5,35 @@ use std::{error::Error, result::Result};
 pub struct SimpleSlam2DParams {
     pub input_scan: String,
     pub input_odom: String,
+    pub input_cmd: String,
     pub output_map: String,
     pub map_frame_id: String,
+}
+
+#[derive(Default, Clone)]
+pub struct Pose2D {
+    pub x: f32,
+    pub y: f32,
+    pub theta: f32,
+}
+
+pub struct SimpleSlam2D {
+    scan: sensor_msgs::msg::LaserScan,
+    twist: geometry_msgs::msg::Twist,
+    points: Vec<geometry_msgs::msg::Point32>,
+    channels: Vec<f32>,
+    pose: Pose2D,
+    pose_stamp: std::time::Instant,
 }
 
 pub struct SimpleSlam2DNode {
     node: rclrs::Node,
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
-    odom_sub: Arc<rclrs::Subscription<nav_msgs::msg::Odometry>>,
+    twist_sub: Arc<rclrs::Subscription<geometry_msgs::msg::Twist>>,
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
-    scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
-    odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
-    map_msg_data: Arc<Mutex<sensor_msgs::msg::PointCloud>>,
+    scan_cb: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
+    twist_cb: Arc<Mutex<Option<geometry_msgs::msg::Twist>>>,
+    slam: Arc<Mutex<SimpleSlam2D>>,
     params: SimpleSlam2DParams,
 }
 
@@ -29,54 +46,55 @@ impl SimpleSlam2DNode {
         let params = SimpleSlam2DParams {
             input_scan: doc["input_scan"].as_str().unwrap().to_string(),
             input_odom: doc["input_odom"].as_str().unwrap().to_string(),
+            input_cmd: doc["input_cmd"].as_str().unwrap().to_string(),
             output_map: doc["output_map"].as_str().unwrap().to_string(),
             map_frame_id: doc["map_frame_id"].as_str().unwrap().to_string(),
         };
         // init node
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // scan sub
-        let scan_data = Arc::new(Mutex::new(None));
-        let scan_data_cb = Arc::clone(&scan_data);
+        let scan_cb = Arc::new(Mutex::new(None));
+        let scan_cb_sync = Arc::clone(&scan_cb);
         let scan_sub = {
             node.create_subscription(
                 &params.input_scan,
                 rclrs::QOS_PROFILE_SENSOR_DATA,
                 move |msg: sensor_msgs::msg::LaserScan| {
-                    *scan_data_cb.lock().unwrap() = Some(msg);
+                    *scan_cb_sync.lock().unwrap() = Some(msg);
                 },
             )?
         };
-        // odom sub
-        let odom_data = Arc::new(Mutex::new(None));
-        let odom_data_cb = Arc::clone(&odom_data);
-        let odom_sub = {
+        // twist sub
+        let twist_cb = Arc::new(Mutex::new(None));
+        let twist_cb_sync = Arc::clone(&twist_cb);
+        let twist_sub = {
             node.create_subscription(
                 &params.input_odom,
                 rclrs::QOS_PROFILE_DEFAULT,
-                move |msg: nav_msgs::msg::Odometry| {
-                    *odom_data_cb.lock().unwrap() = Some(msg);
+                move |msg: geometry_msgs::msg::Twist| {
+                    *twist_cb_sync.lock().unwrap() = Some(msg);
                 },
             )?
         };
-        // map_points
-        let map_msg_data = Arc::new(Mutex::new(sensor_msgs::msg::PointCloud {
-            header: std_msgs::msg::Header::default(),
-            points: Vec::new(),
-            channels: vec![sensor_msgs::msg::ChannelFloat32 {
-                name: String::from("rgb"),
-                values: Vec::new(),
-            }],
+        // TODO: init SimpleSlam2D
+        let slam = Arc::new(Mutex::new(SimpleSlam2D {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            twist: geometry_msgs::msg::Twist::default(),
+            points: vec![],
+            channels: vec![],
+            pose: Pose2D::default(),
+            pose_stamp: std::time::Instant::now(),
         }));
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
             node,
             scan_sub,
-            odom_sub,
+            twist_sub,
             map_pub,
-            scan_data,
-            odom_data,
-            map_msg_data,
+            scan_cb,
+            twist_cb,
+            slam,
             params,
         })
     }
