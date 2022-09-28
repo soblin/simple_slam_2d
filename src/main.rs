@@ -2,53 +2,12 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error::Error, result::Result};
 
-pub struct SimpleSlam2DParams {
-    pub input_scan: String,
-    pub input_odom: String,
-    pub input_cmd: String,
-    pub output_map: String,
-    pub output_odom: String,
-    pub map_frame_id: String,
-}
-
-#[derive(Default, Clone)]
-pub struct Pose2D {
-    pub x: f32,
-    pub y: f32,
-    pub th: f32,
-}
-
-impl Pose2D {
-    pub fn to_pose(&self) -> geometry_msgs::msg::Pose {
-        let quat = simple_slam_2d::rpy2quat(&[0.0, 0.0, self.th]);
-        return geometry_msgs::msg::Pose {
-            position: geometry_msgs::msg::Point {
-                x: self.x as f64,
-                y: self.y as f64,
-                z: 0.0,
-            },
-            orientation: geometry_msgs::msg::Quaternion {
-                x: quat[0] as f64,
-                y: quat[1] as f64,
-                z: quat[2] as f64,
-                w: quat[3] as f64,
-            },
-        };
-    }
-    pub fn update(&mut self, v: f32, omega: f32, dt: f32) {
-        let (dx, dy, dth) = (v * self.th.cos(), v * self.th.sin(), omega);
-        self.x += dx * dt;
-        self.y += dy * dt;
-        self.th += dth * dt;
-    }
-}
-
 pub struct SimpleSlam2D {
     pub scan: sensor_msgs::msg::LaserScan,
     pub twist: geometry_msgs::msg::Twist,
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
-    pub pose: Pose2D,
+    pub pose: simple_slam_2d::geometry::Pose2D,
     pub twist_stamp: std::time::Instant,
 }
 
@@ -108,16 +67,16 @@ pub struct SimpleSlam2DNode {
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
     odom_pub: rclrs::Publisher<nav_msgs::msg::Odometry>,
     slam: Arc<Mutex<SimpleSlam2D>>,
-    params: SimpleSlam2DParams,
+    params: simple_slam_2d::param::SimpleSlam2DParams,
 }
 
 //
 impl SimpleSlam2DNode {
     fn new(context: &rclrs::Context, param_path: &str) -> Result<Self, Box<dyn Error>> {
         // load param yaml
-        let docs = simple_slam_2d::load_config(param_path)?;
+        let docs = simple_slam_2d::utils::load_config(param_path)?;
         let doc = &docs[0];
-        let params = SimpleSlam2DParams {
+        let params = simple_slam_2d::param::SimpleSlam2DParams {
             input_scan: doc["input_scan"].as_str().unwrap().to_string(),
             input_odom: doc["input_odom"].as_str().unwrap().to_string(),
             input_cmd: doc["input_cmd"].as_str().unwrap().to_string(),
@@ -133,7 +92,7 @@ impl SimpleSlam2DNode {
             twist: geometry_msgs::msg::Twist::default(),
             points: vec![],
             channels: vec![],
-            pose: Pose2D::default(),
+            pose: simple_slam_2d::geometry::Pose2D::default(),
             twist_stamp: std::time::Instant::now(),
         }));
         // scan sub
@@ -222,7 +181,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ctx = rclrs::Context::new(std::env::args())?;
 
     // path to /config/param.yaml
-    let pkg_share_directory = simple_slam_2d::get_package_share_directory("simple_slam_2d")?;
+    let pkg_share_directory = simple_slam_2d::utils::get_package_share_directory("simple_slam_2d")?;
     let param_path = Path::new(&pkg_share_directory)
         .join("config")
         .join("param.yaml");
