@@ -35,9 +35,9 @@ pub fn rpy2quat(rpy: &[f32; 3]) -> [f32; 4] {
     let cos_y: f32 = (rpy[2] / 2.0).cos();
     let sin_y: f32 = (rpy[2] / 2.0).sin();
     return [
-        cos_r * cos_p * cos_y + sin_r * sin_p * sin_y,
-        sin_r * cos_p * cos_y - cos_r * sin_p * sin_y,
-        cos_r * sin_p * cos_y + sin_r * cos_p * sin_y,
-        cos_r * cos_p * sin_y - sin_r * sin_p * cos_y,
+        sin_r * cos_p * cos_y - cos_r * sin_p * sin_y, // x
+        cos_r * sin_p * cos_y + sin_r * cos_p * sin_y, // y
+        cos_r * cos_p * sin_y - sin_r * sin_p * cos_y, // z
+        cos_r * cos_p * cos_y + sin_r * sin_p * sin_y, // w
     ];
 }
