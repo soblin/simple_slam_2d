@@ -7,6 +7,7 @@ pub struct SimpleSlam2DParams {
     pub input_odom: String,
     pub input_cmd: String,
     pub output_map: String,
+    pub output_odom: String,
     pub map_frame_id: String,
 }
 
@@ -15,6 +16,25 @@ pub struct Pose2D {
     pub x: f32,
     pub y: f32,
     pub th: f32,
+}
+
+impl Pose2D {
+    pub fn to_pose(&self) -> geometry_msgs::msg::Pose {
+        let quat = simple_slam_2d::rpy2quat(&[0.0, 0.0, self.th]);
+        return geometry_msgs::msg::Pose {
+            position: geometry_msgs::msg::Point {
+                x: self.x as f64,
+                y: self.y as f64,
+                z: 0.0,
+            },
+            orientation: geometry_msgs::msg::Quaternion {
+                x: quat[0] as f64,
+                y: quat[1] as f64,
+                z: quat[2] as f64,
+                w: quat[3] as f64,
+            },
+        };
+    }
 }
 
 pub struct SimpleSlam2D {
@@ -39,6 +59,7 @@ impl SimpleSlam2D {
         // new position
         // NOTE: assume constant velocity
         let dt = self.pose_stamp.elapsed().as_millis() as f32 / 1000.0;
+        println!("dt = {}", dt);
         let (v, omega) = (self.twist.linear.x as f32, self.twist.angular.z as f32);
         let (dx, dy, dth) = (v * self.pose.th.cos(), v * self.pose.th.sin(), omega);
         let pose = Pose2D {
@@ -83,6 +104,7 @@ pub struct SimpleSlam2DNode {
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
     twist_sub: Arc<rclrs::Subscription<geometry_msgs::msg::Twist>>,
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
+    odom_pub: rclrs::Publisher<nav_msgs::msg::Odometry>,
     slam: Arc<Mutex<SimpleSlam2D>>,
     params: SimpleSlam2DParams,
 }
@@ -98,6 +120,7 @@ impl SimpleSlam2DNode {
             input_odom: doc["input_odom"].as_str().unwrap().to_string(),
             input_cmd: doc["input_cmd"].as_str().unwrap().to_string(),
             output_map: doc["output_map"].as_str().unwrap().to_string(),
+            output_odom: doc["output_odom"].as_str().unwrap().to_string(),
             map_frame_id: doc["map_frame_id"].as_str().unwrap().to_string(),
         };
         // init node
@@ -137,11 +160,15 @@ impl SimpleSlam2DNode {
         };
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
+        // odom_pub
+        let odom_pub =
+            node.create_publisher(&params.output_odom, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
             node,
             scan_sub,
             twist_sub,
             map_pub,
+            odom_pub,
             slam,
             params,
         })
@@ -151,13 +178,14 @@ impl SimpleSlam2DNode {
         let cur_time = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap();
+        let cur_time = builtin_interfaces::msg::Time {
+            sec: cur_time.as_secs() as i32,
+            nanosec: cur_time.subsec_nanos() as u32,
+        };
         let mut map_msg = sensor_msgs::msg::PointCloud {
             header: std_msgs::msg::Header {
                 frame_id: String::from(&self.params.map_frame_id),
-                stamp: builtin_interfaces::msg::Time {
-                    sec: cur_time.as_secs() as i32,
-                    nanosec: cur_time.subsec_nanos() as u32,
-                },
+                stamp: cur_time.clone(),
             },
             points: vec![],
             channels: vec![sensor_msgs::msg::ChannelFloat32 {
@@ -169,7 +197,15 @@ impl SimpleSlam2DNode {
         slam.odom_mapping();
         map_msg.points = slam.points.clone();
         map_msg.channels[0].values = slam.channels.clone();
-        self.map_pub.publish(map_msg)?;
+        // self.map_pub.publish(map_msg)?;
+        // odom msg
+        let mut odom_msg = nav_msgs::msg::Odometry::default();
+        odom_msg.header = std_msgs::msg::Header {
+            frame_id: String::from(&self.params.map_frame_id),
+            stamp: cur_time.clone(),
+        };
+        odom_msg.pose.pose = slam.pose.to_pose();
+        self.odom_pub.publish(odom_msg)?;
         Ok(())
     }
 }

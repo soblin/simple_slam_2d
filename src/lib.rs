@@ -26,3 +26,18 @@ pub fn quat2rpy(quat: &[f32; 4]) -> [f32; 3] {
     let y: f32 = (2.0 * (q0 * q3 + q1 * q2)).atan2(q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3);
     [r, p, y]
 }
+
+pub fn rpy2quat(rpy: &[f32; 3]) -> [f32; 4] {
+    let cos_r: f32 = (rpy[0] / 2.0).cos();
+    let sin_r: f32 = (rpy[0] / 2.0).sin();
+    let cos_p: f32 = (rpy[1] / 2.0).cos();
+    let sin_p: f32 = (rpy[1] / 2.0).sin();
+    let cos_y: f32 = (rpy[2] / 2.0).cos();
+    let sin_y: f32 = (rpy[2] / 2.0).sin();
+    return [
+        cos_r * cos_p * cos_y + sin_r * sin_p * sin_y,
+        sin_r * cos_p * cos_y - cos_r * sin_p * sin_y,
+        cos_r * sin_p * cos_y + sin_r * cos_p * sin_y,
+        cos_r * cos_p * sin_y - sin_r * sin_p * cos_y,
+    ];
+}

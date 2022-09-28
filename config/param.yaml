@@ -2,4 +2,5 @@ input_scan: "/burger1_scan"       # sensor_msgs::LaserScan
 input_odom: "/burger1_odom"       # nav_msgs::Odometry
 input_cmd: "/burger1_cmd_vel_raw" # geometry_msgs::Twist
 output_map: "/burger1_map"        # sensor_msgs::PointCloud
+output_odom: "/burger1_odom_est"
 map_frame_id: "burger1_odom"
