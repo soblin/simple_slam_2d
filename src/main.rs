@@ -34,7 +34,7 @@ impl SimpleSlam2DNode {
             points: vec![],
             channels: vec![],
             pose: simple_slam_2d::geometry::Pose2D::default(),
-            twist_stamp: std::time::Instant::now(),
+            pose_integral_stamp: None,
         }));
         // scan sub
         let slam_sync_scan = Arc::clone(&slam);
@@ -55,12 +55,8 @@ impl SimpleSlam2DNode {
                 &params.input_cmd,
                 rclrs::QOS_PROFILE_DEFAULT,
                 move |msg: geometry_msgs::msg::Twist| {
-                    // TODO: store nav_msgs::msg::Odometry in SimpleSlam2D and calcualte elapsed from ros::Time
                     let mut slam = slam_sync_twist.lock().unwrap();
-                    let dt: f32 = slam.twist_stamp.elapsed().as_millis() as f32 / 1000.0;
                     slam.set_twist(msg);
-                    // update odometry
-                    slam.update_pose(dt)
                 },
             )?
         };
@@ -69,6 +65,7 @@ impl SimpleSlam2DNode {
         // odom_pub
         let odom_pub =
             node.create_publisher(&params.output_odom, rclrs::QOS_PROFILE_SENSOR_DATA)?;
+        let pose_integral_stamp: Option<std::time::Instant> = None;
         Ok(Self {
             node,
             scan_sub,
@@ -78,6 +75,12 @@ impl SimpleSlam2DNode {
             slam,
             params,
         })
+    }
+    fn update_pose(&self) -> Result<(), rclrs::RclrsError> {
+        let mut slam = self.slam.lock().unwrap();
+        // update odometry
+        slam.update_pose();
+        Ok(())
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
         // prepare pointcloud msg
@@ -130,13 +133,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // init node
     let simple_slam_2d_node = Arc::new(SimpleSlam2DNode::new(&ctx, &param_path)?);
-    let simple_slam_2d_node_other_thread = Arc::clone(&simple_slam_2d_node);
-
+    // mapping timer
+    let mapping_thread = Arc::clone(&simple_slam_2d_node);
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
         loop {
-            use std::time::Duration;
-            std::thread::sleep(Duration::from_millis(500));
-            simple_slam_2d_node_other_thread.publish()?;
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            mapping_thread.publish()?;
+        }
+    });
+    // position integral timer
+    let pose_integral_thread = Arc::clone(&simple_slam_2d_node);
+    std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            pose_integral_thread.update_pose()?;
         }
     });
     rclrs::spin(&simple_slam_2d_node.node).map_err(|err| err.into())
