@@ -5,18 +5,90 @@ use std::{error::Error, result::Result};
 pub struct SimpleSlam2DParams {
     pub input_scan: String,
     pub input_odom: String,
+    pub input_cmd: String,
     pub output_map: String,
     pub map_frame_id: String,
+}
+
+#[derive(Default, Clone)]
+pub struct Pose2D {
+    pub x: f32,
+    pub y: f32,
+    pub th: f32,
+}
+
+pub struct SimpleSlam2D {
+    pub scan: sensor_msgs::msg::LaserScan,
+    pub twist: geometry_msgs::msg::Twist,
+    pub points: Vec<geometry_msgs::msg::Point32>,
+    pub channels: Vec<f32>,
+    pub pose: Pose2D,
+    pub pose_stamp: std::time::Instant,
+}
+
+impl SimpleSlam2D {
+    fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
+        self.scan = scan;
+    }
+    fn set_twist(&mut self, twist: geometry_msgs::msg::Twist) {
+        self.twist = twist;
+    }
+    fn odom_mapping(&mut self) {
+        // measure processing time
+        let process_tm = std::time::Instant::now();
+        // new position
+        // NOTE: assume constant velocity
+        let dt = self.pose_stamp.elapsed().as_millis() as f32 / 1000.0;
+        let (v, omega) = (self.twist.linear.x as f32, self.twist.angular.z as f32);
+        let (dx, dy, dth) = (
+            v * (self.pose.th + omega * dt).cos() as f32,
+            v * (self.pose.th + omega * dt).sin() as f32,
+            omega * dt as f32,
+        );
+        let pose = Pose2D {
+            x: self.pose.x + dx,
+            y: self.pose.y + dy,
+            th: self.pose.th + dth,
+        };
+        // these are in radian
+        let angle_min = self.scan.angle_min;
+        let angle_max = self.scan.angle_max;
+        let angle_increment = self.scan.angle_increment;
+        // push new points
+        for (i, range) in self.scan.ranges.iter().enumerate() {
+            if *range == std::f32::INFINITY {
+                continue;
+            }
+            let th: f32 = pose.th + (angle_min + (i as f32) * angle_increment);
+            let x_glob: f32 = pose.x + range * th.cos();
+            let y_glob: f32 = pose.y + range * th.sin();
+            self.points.push(geometry_msgs::msg::Point32 {
+                x: x_glob,
+                y: y_glob,
+                z: 0.0,
+            });
+            // TODO: change color based on timestamp ?
+            let (r, g, b) = (200, 10, 10);
+            let color: u32 = r << 16 | g << 8 | b;
+            let color_float: *const f32 = &color as *const u32 as *const f32;
+            unsafe {
+                self.channels.push(*color_float);
+            }
+        }
+        // update
+        self.pose = pose;
+        self.pose_stamp = std::time::Instant::now();
+        // print processing time
+        println!("Processing time: {}", process_tm.elapsed().as_millis());
+    }
 }
 
 pub struct SimpleSlam2DNode {
     node: rclrs::Node,
     scan_sub: Arc<rclrs::Subscription<sensor_msgs::msg::LaserScan>>,
-    odom_sub: Arc<rclrs::Subscription<nav_msgs::msg::Odometry>>,
+    twist_sub: Arc<rclrs::Subscription<geometry_msgs::msg::Twist>>,
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
-    scan_data: Arc<Mutex<Option<sensor_msgs::msg::LaserScan>>>,
-    odom_data: Arc<Mutex<Option<nav_msgs::msg::Odometry>>>,
-    map_msg_data: Arc<Mutex<sensor_msgs::msg::PointCloud>>,
+    slam: Arc<Mutex<SimpleSlam2D>>,
     params: SimpleSlam2DParams,
 }
 
@@ -29,116 +101,69 @@ impl SimpleSlam2DNode {
         let params = SimpleSlam2DParams {
             input_scan: doc["input_scan"].as_str().unwrap().to_string(),
             input_odom: doc["input_odom"].as_str().unwrap().to_string(),
+            input_cmd: doc["input_cmd"].as_str().unwrap().to_string(),
             output_map: doc["output_map"].as_str().unwrap().to_string(),
             map_frame_id: doc["map_frame_id"].as_str().unwrap().to_string(),
         };
         // init node
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
+        // SimpleSlam2D
+        let slam = Arc::new(Mutex::new(SimpleSlam2D {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            twist: geometry_msgs::msg::Twist::default(),
+            points: vec![],
+            channels: vec![],
+            pose: Pose2D::default(),
+            pose_stamp: std::time::Instant::now(),
+        }));
         // scan sub
-        let scan_data = Arc::new(Mutex::new(None));
-        let scan_data_cb = Arc::clone(&scan_data);
+        let slam_sync_scan = Arc::clone(&slam);
         let scan_sub = {
             node.create_subscription(
                 &params.input_scan,
                 rclrs::QOS_PROFILE_SENSOR_DATA,
                 move |msg: sensor_msgs::msg::LaserScan| {
-                    *scan_data_cb.lock().unwrap() = Some(msg);
+                    let mut slam_ = slam_sync_scan.lock().unwrap();
+                    slam_.set_scan(msg);
                 },
             )?
         };
-        // odom sub
-        let odom_data = Arc::new(Mutex::new(None));
-        let odom_data_cb = Arc::clone(&odom_data);
-        let odom_sub = {
+        // twist sub
+        let slam_sync_twist = Arc::clone(&slam);
+        let twist_sub = {
             node.create_subscription(
                 &params.input_odom,
                 rclrs::QOS_PROFILE_DEFAULT,
-                move |msg: nav_msgs::msg::Odometry| {
-                    *odom_data_cb.lock().unwrap() = Some(msg);
+                move |msg: geometry_msgs::msg::Twist| {
+                    let mut slam_ = slam_sync_twist.lock().unwrap();
+                    slam_.set_twist(msg);
                 },
             )?
         };
-        // map_points
-        let map_msg_data = Arc::new(Mutex::new(sensor_msgs::msg::PointCloud {
-            header: std_msgs::msg::Header::default(),
-            points: Vec::new(),
-            channels: vec![sensor_msgs::msg::ChannelFloat32 {
-                name: String::from("rgb"),
-                values: Vec::new(),
-            }],
-        }));
         // map pub
         let map_pub = node.create_publisher(&params.output_map, rclrs::QOS_PROFILE_SENSOR_DATA)?;
         Ok(Self {
             node,
             scan_sub,
-            odom_sub,
+            twist_sub,
             map_pub,
-            scan_data,
-            odom_data,
-            map_msg_data,
+            slam,
             params,
         })
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        if let (Some(odom_msg), Some(scan_msg)) = (
-            &*self.odom_data.lock().unwrap(),
-            &*self.scan_data.lock().unwrap(),
-        ) {
-            // process self.map_msg_data
-            self.odom_slam(&odom_msg.pose.pose, &scan_msg);
-            // update self.map_msg_data
-            let mut map_msg = self.map_msg_data.lock().unwrap();
-            let cur_time = std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap();
-            map_msg.header.frame_id = String::from(&self.params.map_frame_id);
-            map_msg.header.stamp = builtin_interfaces::msg::Time {
-                sec: cur_time.as_secs() as i32,
-                nanosec: cur_time.subsec_nanos() as u32,
-            };
-            println!("points size is {} as of now.", map_msg.points.len());
-            self.map_pub.publish(map_msg.clone())?;
-        }
+        // pointcloud msg
+        let cur_time = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let mut map_msg = sensor_msgs::msg::PointCloud::default();
+        map_msg.header.frame_id = String::from(&self.params.map_frame_id);
+        map_msg.header.stamp = builtin_interfaces::msg::Time {
+            sec: cur_time.as_secs() as i32,
+            nanosec: cur_time.subsec_nanos() as u32,
+        };
+        self.map_pub.publish(map_msg)?;
         Ok(())
-    }
-    fn odom_slam(&self, pose: &geometry_msgs::msg::Pose, scan: &sensor_msgs::msg::LaserScan) {
-        // place Laserscan along the odometry naively
-        let position: &geometry_msgs::msg::Point = &pose.position;
-        let quat: &geometry_msgs::msg::Quaternion = &pose.orientation;
-        let ranges: &Vec<f32> = &scan.ranges;
-        let yaw =
-            simple_slam_2d::quat2rpy(&[quat.x as f32, quat.y as f32, quat.z as f32, quat.w as f32])
-                [0];
-        // these are in radian
-        let angle_min = scan.angle_min;
-        let angle_max = scan.angle_max;
-        let angle_increment = scan.angle_increment;
-        // push points in odom frame
-        let mut new_points = Vec::new();
-        let mut new_channel_values = Vec::new();
-        for (i, range) in ranges.iter().enumerate() {
-            if *range == std::f32::INFINITY {
-                continue;
-            }
-            let theta: f32 = yaw + (angle_min + (i as f32) * angle_increment);
-            let x_glob: f32 = (position.x as f32) + range * (theta.cos() as f32);
-            let y_glob: f32 = (position.y as f32) + range * (theta.sin() as f32);
-            new_points.push(geometry_msgs::msg::Point32 {
-                x: x_glob,
-                y: y_glob,
-                z: 0.0,
-            });
-            let (r, g, b) = (200, 10, 10);
-            let color: u32 = r << 16 | g << 8 | b;
-            let color_float: *const f32 = &color as *const u32 as *const f32;
-            unsafe {
-                new_channel_values.push(*color_float);
-            }
-        }
-        let mut map_msg = self.map_msg_data.lock().unwrap();
-        map_msg.points.append(&mut new_points);
-        map_msg.channels[0].values.append(&mut new_channel_values);
     }
 }
 
