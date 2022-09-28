@@ -40,19 +40,14 @@ impl SimpleSlam2D {
         // NOTE: assume constant velocity
         let dt = self.pose_stamp.elapsed().as_millis() as f32 / 1000.0;
         let (v, omega) = (self.twist.linear.x as f32, self.twist.angular.z as f32);
-        let (dx, dy, dth) = (
-            v * (self.pose.th + omega * dt).cos() as f32,
-            v * (self.pose.th + omega * dt).sin() as f32,
-            omega * dt as f32,
-        );
+        let (dx, dy, dth) = (v * self.pose.th.cos(), v * self.pose.th.sin(), omega);
         let pose = Pose2D {
-            x: self.pose.x + dx,
-            y: self.pose.y + dy,
-            th: self.pose.th + dth,
+            x: self.pose.x + dx * (self.pose.th + omega * dt / 2.0).cos() * dt,
+            y: self.pose.y + dy * (self.pose.th + omega * dt / 2.0).sin() * dt,
+            th: self.pose.th + dth * dt,
         };
         // these are in radian
         let angle_min = self.scan.angle_min;
-        let angle_max = self.scan.angle_max;
         let angle_increment = self.scan.angle_increment;
         // push new points
         for (i, range) in self.scan.ranges.iter().enumerate() {
@@ -156,12 +151,24 @@ impl SimpleSlam2DNode {
         let cur_time = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap();
-        let mut map_msg = sensor_msgs::msg::PointCloud::default();
-        map_msg.header.frame_id = String::from(&self.params.map_frame_id);
-        map_msg.header.stamp = builtin_interfaces::msg::Time {
-            sec: cur_time.as_secs() as i32,
-            nanosec: cur_time.subsec_nanos() as u32,
+        let mut map_msg = sensor_msgs::msg::PointCloud {
+            header: std_msgs::msg::Header {
+                frame_id: String::from(&self.params.map_frame_id),
+                stamp: builtin_interfaces::msg::Time {
+                    sec: cur_time.as_secs() as i32,
+                    nanosec: cur_time.subsec_nanos() as u32,
+                },
+            },
+            points: vec![],
+            channels: vec![sensor_msgs::msg::ChannelFloat32 {
+                name: String::from("rgb"),
+                values: vec![],
+            }],
         };
+        let mut slam = self.slam.lock().unwrap();
+        slam.odom_mapping();
+        map_msg.points = slam.points.clone();
+        map_msg.channels[0].values = slam.channels.clone();
         self.map_pub.publish(map_msg)?;
         Ok(())
     }
