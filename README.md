@@ -47,3 +47,9 @@ ros2 run simple_slam_2d simple_slam_2d OR cargo run
   - geometry_msgs::Twist
 - output
   - sensor_msgs::PointCloud
+
+## result
+
+Mapping by odometry
+
+![mapping by odometry](docs/odometry_mapping.png)
