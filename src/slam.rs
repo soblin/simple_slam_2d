@@ -1,5 +1,6 @@
 use crate::geometry;
 
+// TODO: trait for slam method
 pub struct OdometryMapping {
     pub scan: sensor_msgs::msg::LaserScan,
     pub twist: geometry_msgs::msg::Twist,
