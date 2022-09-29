@@ -52,3 +52,33 @@ impl Pose2D {
         self.th += dth * dt;
     }
 }
+
+pub struct Pose2DIntegrator {
+    pub pose: Pose2D,
+    pub v: f32,
+    pub omega: f32,
+    pub stamp: Option<std::time::Instant>,
+}
+
+impl Pose2DIntegrator {
+    pub fn new(x: f32, y: f32, th: f32) -> Self {
+        Pose2DIntegrator {
+            pose: Pose2D { x: x, y: y, th: th },
+            v: 0.0,
+            omega: 0.0,
+            stamp: None,
+        }
+    }
+    pub fn update_velocity(&mut self, v: f32, omega: f32) {
+        self.v = v;
+        self.omega = omega;
+        self.update_pose();
+    }
+    pub fn update_pose(&mut self) {
+        if let Some(stamp) = self.stamp {
+            let dt = stamp.elapsed().as_millis() as f32 / 1000.0;
+            self.pose.update(self.v, self.omega, dt);
+        }
+        self.stamp = Some(std::time::Instant::now());
+    }
+}

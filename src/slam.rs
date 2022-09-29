@@ -5,8 +5,6 @@ pub struct OdometryMapping {
     pub twist: geometry_msgs::msg::Twist,
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
-    pub pose: geometry::Pose2D,
-    pub pose_integral_stamp: Option<std::time::Instant>,
 }
 
 impl OdometryMapping {
@@ -16,15 +14,7 @@ impl OdometryMapping {
     pub fn set_twist(&mut self, twist: geometry_msgs::msg::Twist) {
         self.twist = twist;
     }
-    pub fn update_pose(&mut self) {
-        if let Some(pose_integral_stamp) = self.pose_integral_stamp {
-            let dt: f32 = pose_integral_stamp.elapsed().as_millis() as f32 / 1000.0;
-            self.pose
-                .update(self.twist.linear.x as f32, self.twist.angular.z as f32, dt);
-        }
-        self.pose_integral_stamp = Some(std::time::Instant::now());
-    }
-    pub fn odom_mapping(&mut self) {
+    pub fn odom_mapping(&mut self, pose: &geometry::Pose2D) {
         let process_tm = std::time::Instant::now();
 
         // these are in radian
@@ -36,9 +26,9 @@ impl OdometryMapping {
             if *range == std::f32::INFINITY {
                 continue;
             }
-            let th: f32 = self.pose.th + (angle_min + (i as f32) * angle_increment);
-            let x_glob: f32 = self.pose.x + range * th.cos();
-            let y_glob: f32 = self.pose.y + range * th.sin();
+            let th: f32 = pose.th + (angle_min + (i as f32) * angle_increment);
+            let x_glob: f32 = pose.x + range * th.cos();
+            let y_glob: f32 = pose.y + range * th.sin();
             self.points.push(geometry_msgs::msg::Point32 {
                 x: x_glob,
                 y: y_glob,
