@@ -47,7 +47,7 @@ impl Pose2D {
             },
         };
     }
-    pub fn update(&mut self, v: f32, omega: f32, dt: f32) {
+    pub fn integrate(&mut self, v: f32, omega: f32, dt: f32) {
         let (dx, dy, dth) = (v * self.th.cos(), v * self.th.sin(), omega);
         self.x += dx * dt;
         self.y += dy * dt;
@@ -81,13 +81,18 @@ impl OdomIntegrator {
         } else {
             self.stopped = false;
         }
-        self.update_pose();
     }
-    pub fn update_pose(&mut self) {
+    pub fn update_pose(&mut self, pose: &Pose2D) {
+        if let Some(stamp) = &self.stamp {
+            self.odom = pose.clone();
+        }
+        self.stamp = Some(utils::get_stamp());
+    }
+    pub fn integrate_pose(&mut self) {
         if let Some(stamp) = &self.stamp {
             if !self.stopped {
                 let dt = utils::elapsed_ms(&stamp) as f32 / 1000.0;
-                self.odom.update(self.v, self.omega, dt);
+                self.odom.integrate(self.v, self.omega, dt);
             }
         }
         self.stamp = Some(utils::get_stamp());

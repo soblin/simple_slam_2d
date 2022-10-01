@@ -30,7 +30,7 @@ impl SimpleSlam2DNode {
         // TODO: initial pose
         // SimpleSlam2D
         let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping::new()));
-        // pose integral
+        // odometry integral
         let odom_integrator = Arc::new(Mutex::new(simple_slam_2d::geometry::OdomIntegrator::new(
             0.0, 0.0, 0.0,
         )));
@@ -75,10 +75,10 @@ impl SimpleSlam2DNode {
             params,
         })
     }
-    fn update_pose(&self) -> Result<(), rclrs::RclrsError> {
+    fn integrate_pose(&self) -> Result<(), rclrs::RclrsError> {
         let mut odom_integrator = self.odom_integrator.lock().unwrap();
         // update odometry
-        odom_integrator.update_pose();
+        odom_integrator.integrate_pose();
         Ok(())
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
@@ -93,7 +93,10 @@ impl SimpleSlam2DNode {
         let mut slam = self.slam.lock().unwrap();
         if !stopped {
             slam.do_slam(&cur_odom);
+            // self.odom_integrator.lock().unwrap().update_pose(<new estimated pose>)
+            // and return <new estimated pose> in this block
         }
+        let est_pose = cur_odom;
 
         // publish map
         let map_msg = sensor_msgs::msg::PointCloud {
@@ -117,7 +120,7 @@ impl SimpleSlam2DNode {
             },
             child_frame_id: String::from(""),
             pose: geometry_msgs::msg::PoseWithCovariance {
-                pose: cur_odom.to_pose(),
+                pose: est_pose.to_pose(),
                 covariance: [0.0; 36],
             },
             twist: geometry_msgs::msg::TwistWithCovariance::default(),
@@ -132,6 +135,7 @@ impl SimpleSlam2DNode {
         );
         Ok(())
     }
+    // TODO: divide publish() part, and publish the entire pose graph
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -154,12 +158,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             mapping_thread.publish()?;
         }
     });
-    // position integral timer
+    // odometry integral timer
     let odom_integral_thread = Arc::clone(&simple_slam_2d_node);
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            odom_integral_thread.update_pose()?;
+            odom_integral_thread.integrate_pose()?;
         }
     });
     rclrs::spin(&simple_slam_2d_node.node).map_err(|err| err.into())
