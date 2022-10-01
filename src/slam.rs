@@ -2,7 +2,7 @@ use crate::geometry;
 
 // TODO: trait for slam method
 pub struct OdometryMapping {
-    scan: sensor_msgs::msg::LaserScan,
+    scan: Vec<(f32, f32)>, // (radius, angle)
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
 }
@@ -10,27 +10,29 @@ pub struct OdometryMapping {
 impl OdometryMapping {
     pub fn new() -> Self {
         OdometryMapping {
-            scan: sensor_msgs::msg::LaserScan::default(),
+            scan: vec![],
             points: vec![],
             channels: vec![],
         }
     }
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
-        self.scan = scan;
-    }
-    pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
         // these are in radian
-        let angle_min = self.scan.angle_min;
-        let angle_increment = self.scan.angle_increment;
-
-        // push new points
-        for (i, range) in self.scan.ranges.iter().enumerate() {
+        let angle_min = scan.angle_min;
+        let angle_increment = scan.angle_increment;
+        for (i, range) in scan.ranges.iter().enumerate() {
             if *range == std::f32::INFINITY {
                 continue;
             }
-            let th: f32 = pose.th + (angle_min + (i as f32) * angle_increment);
-            let x_glob: f32 = pose.x + range * th.cos();
-            let y_glob: f32 = pose.y + range * th.sin();
+            let angle = angle_min + (i as f32) * angle_increment;
+            self.scan.push((*range, angle));
+        }
+    }
+    pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
+        // push new points
+        for (range, angle) in self.scan.iter() {
+            let th: f32 = pose.th + (*angle);
+            let x_glob: f32 = pose.x + (*range) * th.cos();
+            let y_glob: f32 = pose.y + (*range) * th.sin();
             self.points.push(geometry_msgs::msg::Point32 {
                 x: x_glob,
                 y: y_glob,
