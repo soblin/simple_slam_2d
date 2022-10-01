@@ -19,8 +19,6 @@ impl OdometryMapping {
         self.scan = scan;
     }
     pub fn odom_mapping(&mut self, pose: &geometry::Pose2D) {
-        let process_tm = std::time::Instant::now();
-
         // these are in radian
         let angle_min = self.scan.angle_min;
         let angle_increment = self.scan.angle_increment;
@@ -45,12 +43,6 @@ impl OdometryMapping {
                 self.channels.push(*color_float);
             }
         }
-        // print processing time
-        println!(
-            "Processing time = {}[ms], #points = {}",
-            process_tm.elapsed().as_micros() as f32 / 1000.0,
-            self.points.len(),
-        );
     }
 }
 

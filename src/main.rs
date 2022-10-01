@@ -82,7 +82,7 @@ impl SimpleSlam2DNode {
         Ok(())
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        let elapsed = std::time::Instant::now();
+        let elapsed = std::time::SystemTime::now();
         // get current pose
         let (current_pose, stopped) = {
             let mut pose_integrator = self.pose_integrator.lock().unwrap();
@@ -91,22 +91,15 @@ impl SimpleSlam2DNode {
 
         // do SLAM
         let mut slam = self.slam.lock().unwrap();
-        if (!stopped) {
+        if !stopped {
             slam.odom_mapping(&current_pose);
         }
 
         // publish map
-        let cur_time = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let cur_time = builtin_interfaces::msg::Time {
-            sec: cur_time.as_secs() as i32,
-            nanosec: cur_time.subsec_nanos() as u32,
-        };
         let map_msg = sensor_msgs::msg::PointCloud {
             header: std_msgs::msg::Header {
                 frame_id: String::from(&self.params.map_frame_id),
-                stamp: cur_time.clone(),
+                stamp: simple_slam_2d::utils::get_stamp(),
             },
             points: slam.points.clone(),
             channels: vec![sensor_msgs::msg::ChannelFloat32 {
@@ -120,7 +113,7 @@ impl SimpleSlam2DNode {
         let odom_msg = nav_msgs::msg::Odometry {
             header: std_msgs::msg::Header {
                 frame_id: String::from(&self.params.map_frame_id),
-                stamp: cur_time.clone(),
+                stamp: simple_slam_2d::utils::get_stamp(),
             },
             child_frame_id: String::from(""),
             pose: geometry_msgs::msg::PoseWithCovariance {
@@ -134,7 +127,7 @@ impl SimpleSlam2DNode {
         // stat
         println!(
             "Processing time: {}[ms], #points = {}",
-            elapsed.elapsed().as_millis(),
+            elapsed.elapsed().unwrap().as_millis(),
             slam.points.len()
         );
         Ok(())

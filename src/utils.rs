@@ -18,3 +18,22 @@ pub fn load_config(yaml_path: &str) -> Result<Vec<yaml_rust::Yaml>, Box<dyn std:
     let docs = YamlLoader::load_from_str(&s)?;
     Ok(docs)
 }
+
+pub fn get_stamp() -> builtin_interfaces::msg::Time {
+    let cur_time = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap();
+    builtin_interfaces::msg::Time {
+        sec: cur_time.as_secs() as i32,
+        nanosec: cur_time.subsec_nanos() as u32,
+    }
+}
+
+pub fn elapsed_ms(stamp: &builtin_interfaces::msg::Time) -> i64 {
+    let cur_time = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap();
+    let sec = cur_time.as_secs() as i64 - stamp.sec as i64;
+    let nanosec = (cur_time.subsec_nanos() as i64) - (stamp.nanosec as i64);
+    return sec * 1000 + (nanosec / 1000000) as i64;
+}
