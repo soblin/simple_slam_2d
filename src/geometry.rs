@@ -1,3 +1,5 @@
+use crate::utils;
+
 pub fn quat2rpy(quat: &[f32; 4]) -> [f32; 3] {
     let (q0, q1, q2, q3) = (quat[0], quat[1], quat[2], quat[3]);
     let r: f32 = (2.0 * (q0 * q1 + q2 * q3)).atan2(q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3);
@@ -53,32 +55,41 @@ impl Pose2D {
     }
 }
 
-pub struct Pose2DIntegrator {
-    pub pose: Pose2D,
+pub struct OdomIntegrator {
+    pub odom: Pose2D,
     pub v: f32,
     pub omega: f32,
-    pub stamp: Option<std::time::Instant>,
+    pub stamp: Option<builtin_interfaces::msg::Time>,
+    pub stopped: bool,
 }
 
-impl Pose2DIntegrator {
+impl OdomIntegrator {
     pub fn new(x: f32, y: f32, th: f32) -> Self {
-        Pose2DIntegrator {
-            pose: Pose2D { x: x, y: y, th: th },
+        OdomIntegrator {
+            odom: Pose2D { x: x, y: y, th: th },
             v: 0.0,
             omega: 0.0,
             stamp: None,
+            stopped: false,
         }
     }
     pub fn update_velocity(&mut self, v: f32, omega: f32) {
         self.v = v;
         self.omega = omega;
+        if v.abs() < 1e-5 && omega.abs() < 1e-5 {
+            self.stopped = true;
+        } else {
+            self.stopped = false;
+        }
         self.update_pose();
     }
     pub fn update_pose(&mut self) {
-        if let Some(stamp) = self.stamp {
-            let dt = stamp.elapsed().as_millis() as f32 / 1000.0;
-            self.pose.update(self.v, self.omega, dt);
+        if let Some(stamp) = &self.stamp {
+            if !self.stopped {
+                let dt = utils::elapsed_ms(&stamp) as f32 / 1000.0;
+                self.odom.update(self.v, self.omega, dt);
+            }
         }
-        self.stamp = Some(std::time::Instant::now());
+        self.stamp = Some(utils::get_stamp());
     }
 }

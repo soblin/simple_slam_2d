@@ -9,7 +9,7 @@ pub struct SimpleSlam2DNode {
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
     odom_pub: rclrs::Publisher<nav_msgs::msg::Odometry>,
     slam: Arc<Mutex<simple_slam_2d::slam::OdometryMapping>>,
-    pose_integrator: Arc<Mutex<simple_slam_2d::geometry::Pose2DIntegrator>>,
+    odom_integrator: Arc<Mutex<simple_slam_2d::geometry::OdomIntegrator>>,
     params: simple_slam_2d::param::SimpleSlam2DParams,
 }
 
@@ -29,16 +29,11 @@ impl SimpleSlam2DNode {
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // TODO: initial pose
         // SimpleSlam2D
-        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping {
-            scan: sensor_msgs::msg::LaserScan::default(),
-            twist: geometry_msgs::msg::Twist::default(),
-            points: vec![],
-            channels: vec![],
-        }));
+        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping::new()));
         // pose integral
-        let pose_integrator = Arc::new(Mutex::new(
-            simple_slam_2d::geometry::Pose2DIntegrator::new(0.0, 0.0, 0.0),
-        ));
+        let odom_integrator = Arc::new(Mutex::new(simple_slam_2d::geometry::OdomIntegrator::new(
+            0.0, 0.0, 0.0,
+        )));
         // scan sub
         let slam_sync_scan = Arc::clone(&slam);
         let scan_sub = {
@@ -53,16 +48,14 @@ impl SimpleSlam2DNode {
         };
         // twist sub
         let slam_sync_twist = Arc::clone(&slam);
-        let pose_integrator_sync = Arc::clone(&pose_integrator);
+        let odom_integrator_sync = Arc::clone(&odom_integrator);
         let twist_sub = {
             node.create_subscription(
                 &params.input_cmd,
                 rclrs::QOS_PROFILE_DEFAULT,
                 move |msg: geometry_msgs::msg::Twist| {
-                    let mut pose_integrator = pose_integrator_sync.lock().unwrap();
-                    pose_integrator.update_velocity(msg.linear.x as f32, msg.angular.z as f32);
-                    let mut slam = slam_sync_twist.lock().unwrap();
-                    slam.set_twist(msg);
+                    let mut odom_integrator = odom_integrator_sync.lock().unwrap();
+                    odom_integrator.update_velocity(msg.linear.x as f32, msg.angular.z as f32);
                 },
             )?
         };
@@ -78,56 +71,65 @@ impl SimpleSlam2DNode {
             map_pub,
             odom_pub,
             slam,
-            pose_integrator,
+            odom_integrator,
             params,
         })
     }
     fn update_pose(&self) -> Result<(), rclrs::RclrsError> {
-        let mut pose_integrator = self.pose_integrator.lock().unwrap();
+        let mut odom_integrator = self.odom_integrator.lock().unwrap();
         // update odometry
-        pose_integrator.update_pose();
+        odom_integrator.update_pose();
         Ok(())
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        // prepare pointcloud msg
-        let cur_time = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let cur_time = builtin_interfaces::msg::Time {
-            sec: cur_time.as_secs() as i32,
-            nanosec: cur_time.subsec_nanos() as u32,
-        };
-        let mut map_msg = sensor_msgs::msg::PointCloud {
-            header: std_msgs::msg::Header {
-                frame_id: String::from(&self.params.map_frame_id),
-                stamp: cur_time.clone(),
-            },
-            points: vec![],
-            channels: vec![sensor_msgs::msg::ChannelFloat32 {
-                name: String::from("rgb"),
-                values: vec![],
-            }],
-        };
+        let elapsed = std::time::SystemTime::now();
         // get current pose
-        let current_pose = {
-            let mut pose_integrator = self.pose_integrator.lock().unwrap();
-            pose_integrator.pose.clone()
+        let (cur_odom, stopped) = {
+            let mut odom_integrator = self.odom_integrator.lock().unwrap();
+            (odom_integrator.odom.clone(), odom_integrator.stopped)
         };
+
         // do SLAM
         let mut slam = self.slam.lock().unwrap();
-        slam.odom_mapping(&current_pose);
+        if !stopped {
+            slam.do_slam(&cur_odom);
+        }
+
         // publish map
-        map_msg.points = slam.points.clone();
-        map_msg.channels[0].values = slam.channels.clone();
-        self.map_pub.publish(map_msg)?;
-        // publish odom
-        let mut odom_msg = nav_msgs::msg::Odometry::default();
-        odom_msg.header = std_msgs::msg::Header {
-            frame_id: String::from(&self.params.map_frame_id),
-            stamp: cur_time.clone(),
+        let map_msg = sensor_msgs::msg::PointCloud {
+            header: std_msgs::msg::Header {
+                frame_id: String::from(&self.params.map_frame_id),
+                stamp: simple_slam_2d::utils::get_stamp(),
+            },
+            points: slam.points.clone(),
+            channels: vec![sensor_msgs::msg::ChannelFloat32 {
+                name: String::from("rgb"),
+                values: slam.channels.clone(),
+            }],
         };
-        odom_msg.pose.pose = current_pose.to_pose();
+        self.map_pub.publish(map_msg)?;
+
+        // publish odom
+        let odom_msg = nav_msgs::msg::Odometry {
+            header: std_msgs::msg::Header {
+                frame_id: String::from(&self.params.map_frame_id),
+                stamp: simple_slam_2d::utils::get_stamp(),
+            },
+            child_frame_id: String::from(""),
+            pose: geometry_msgs::msg::PoseWithCovariance {
+                pose: cur_odom.to_pose(),
+                covariance: [0.0; 36],
+            },
+            twist: geometry_msgs::msg::TwistWithCovariance::default(),
+        };
         self.odom_pub.publish(odom_msg)?;
+
+        // stat
+        println!(
+            "Processing time: {}[ms], #points = {}",
+            elapsed.elapsed().unwrap().as_millis(),
+            slam.points.len()
+        );
         Ok(())
     }
 }
@@ -153,11 +155,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
     // position integral timer
-    let pose_integral_thread = Arc::clone(&simple_slam_2d_node);
+    let odom_integral_thread = Arc::clone(&simple_slam_2d_node);
     std::thread::spawn(move || -> Result<(), rclrs::RclrsError> {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            pose_integral_thread.update_pose()?;
+            odom_integral_thread.update_pose()?;
         }
     });
     rclrs::spin(&simple_slam_2d_node.node).map_err(|err| err.into())

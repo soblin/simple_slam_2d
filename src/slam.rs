@@ -1,22 +1,24 @@
 use crate::geometry;
 
+// TODO: trait for slam method
 pub struct OdometryMapping {
-    pub scan: sensor_msgs::msg::LaserScan,
-    pub twist: geometry_msgs::msg::Twist,
+    scan: sensor_msgs::msg::LaserScan,
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
 }
 
 impl OdometryMapping {
+    pub fn new() -> Self {
+        OdometryMapping {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            points: vec![],
+            channels: vec![],
+        }
+    }
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
         self.scan = scan;
     }
-    pub fn set_twist(&mut self, twist: geometry_msgs::msg::Twist) {
-        self.twist = twist;
-    }
-    pub fn odom_mapping(&mut self, pose: &geometry::Pose2D) {
-        let process_tm = std::time::Instant::now();
-
+    pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
         // these are in radian
         let angle_min = self.scan.angle_min;
         let angle_increment = self.scan.angle_increment;
@@ -41,11 +43,28 @@ impl OdometryMapping {
                 self.channels.push(*color_float);
             }
         }
-        // print processing time
-        println!(
-            "Processing time = {}[ms], #points = {}",
-            process_tm.elapsed().as_micros() as f32 / 1000.0,
-            self.points.len(),
-        );
+    }
+}
+
+pub struct ICPMapping {
+    scan: sensor_msgs::msg::LaserScan,
+    ref_points: Vec<geometry_msgs::msg::Point32>,
+    poses: Vec<geometry::Pose2D>,
+    pub points: Vec<geometry_msgs::msg::Point32>,
+    pub channels: Vec<f32>,
+}
+
+impl ICPMapping {
+    pub fn new(init_pose: &geometry::Pose2D) -> Self {
+        ICPMapping {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            ref_points: vec![],
+            poses: vec![init_pose.clone()],
+            points: vec![],
+            channels: vec![],
+        }
+    }
+    pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
+        self.scan = scan;
     }
 }
