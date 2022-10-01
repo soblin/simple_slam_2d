@@ -29,12 +29,7 @@ impl SimpleSlam2DNode {
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // TODO: initial pose
         // SimpleSlam2D
-        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping {
-            scan: sensor_msgs::msg::LaserScan::default(),
-            twist: geometry_msgs::msg::Twist::default(),
-            points: vec![],
-            channels: vec![],
-        }));
+        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping::new()));
         // pose integral
         let pose_integrator = Arc::new(Mutex::new(
             simple_slam_2d::geometry::Pose2DIntegrator::new(0.0, 0.0, 0.0),
@@ -89,7 +84,20 @@ impl SimpleSlam2DNode {
         Ok(())
     }
     fn publish(&self) -> Result<(), rclrs::RclrsError> {
-        // prepare pointcloud msg
+        let elapsed = std::time::Instant::now();
+        // get current pose
+        let (current_pose, stopped) = {
+            let mut pose_integrator = self.pose_integrator.lock().unwrap();
+            (pose_integrator.pose.clone(), pose_integrator.stopped)
+        };
+
+        // do SLAM
+        let mut slam = self.slam.lock().unwrap();
+        if (!stopped) {
+            slam.odom_mapping(&current_pose);
+        }
+
+        // publish map
         let cur_time = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap();
@@ -97,37 +105,40 @@ impl SimpleSlam2DNode {
             sec: cur_time.as_secs() as i32,
             nanosec: cur_time.subsec_nanos() as u32,
         };
-        let mut map_msg = sensor_msgs::msg::PointCloud {
+        let map_msg = sensor_msgs::msg::PointCloud {
             header: std_msgs::msg::Header {
                 frame_id: String::from(&self.params.map_frame_id),
                 stamp: cur_time.clone(),
             },
-            points: vec![],
+            points: slam.points.clone(),
             channels: vec![sensor_msgs::msg::ChannelFloat32 {
                 name: String::from("rgb"),
-                values: vec![],
+                values: slam.channels.clone(),
             }],
         };
-        // get current pose
-        let current_pose = {
-            let mut pose_integrator = self.pose_integrator.lock().unwrap();
-            pose_integrator.pose.clone()
-        };
-        // do SLAM
-        let mut slam = self.slam.lock().unwrap();
-        slam.odom_mapping(&current_pose);
-        // publish map
-        map_msg.points = slam.points.clone();
-        map_msg.channels[0].values = slam.channels.clone();
         self.map_pub.publish(map_msg)?;
+
         // publish odom
-        let mut odom_msg = nav_msgs::msg::Odometry::default();
-        odom_msg.header = std_msgs::msg::Header {
-            frame_id: String::from(&self.params.map_frame_id),
-            stamp: cur_time.clone(),
+        let odom_msg = nav_msgs::msg::Odometry {
+            header: std_msgs::msg::Header {
+                frame_id: String::from(&self.params.map_frame_id),
+                stamp: cur_time.clone(),
+            },
+            child_frame_id: String::from(""),
+            pose: geometry_msgs::msg::PoseWithCovariance {
+                pose: current_pose.to_pose(),
+                covariance: [0.0; 36],
+            },
+            twist: geometry_msgs::msg::TwistWithCovariance::default(),
         };
-        odom_msg.pose.pose = current_pose.to_pose();
         self.odom_pub.publish(odom_msg)?;
+
+        // stat
+        println!(
+            "Processing time: {}[ms], #points = {}",
+            elapsed.elapsed().as_millis(),
+            slam.points.len()
+        );
         Ok(())
     }
 }

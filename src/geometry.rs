@@ -58,6 +58,7 @@ pub struct Pose2DIntegrator {
     pub v: f32,
     pub omega: f32,
     pub stamp: Option<std::time::Instant>,
+    pub stopped: bool,
 }
 
 impl Pose2DIntegrator {
@@ -67,17 +68,25 @@ impl Pose2DIntegrator {
             v: 0.0,
             omega: 0.0,
             stamp: None,
+            stopped: false,
         }
     }
     pub fn update_velocity(&mut self, v: f32, omega: f32) {
         self.v = v;
         self.omega = omega;
+        if (v.abs() < 1e-5 && omega.abs() < 1e-5) {
+            self.stopped = true;
+        } else {
+            self.stopped = false;
+        }
         self.update_pose();
     }
     pub fn update_pose(&mut self) {
         if let Some(stamp) = self.stamp {
-            let dt = stamp.elapsed().as_millis() as f32 / 1000.0;
-            self.pose.update(self.v, self.omega, dt);
+            if (!self.stopped) {
+                let dt = stamp.elapsed().as_millis() as f32 / 1000.0;
+                self.pose.update(self.v, self.omega, dt);
+            }
         }
         self.stamp = Some(std::time::Instant::now());
     }

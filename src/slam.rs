@@ -2,13 +2,21 @@ use crate::geometry;
 
 // TODO: trait for slam method
 pub struct OdometryMapping {
-    pub scan: sensor_msgs::msg::LaserScan,
-    pub twist: geometry_msgs::msg::Twist,
+    scan: sensor_msgs::msg::LaserScan,
+    twist: geometry_msgs::msg::Twist,
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
 }
 
 impl OdometryMapping {
+    pub fn new() -> Self {
+        OdometryMapping {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            twist: geometry_msgs::msg::Twist::default(),
+            points: vec![],
+            channels: vec![],
+        }
+    }
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
         self.scan = scan;
     }
@@ -50,3 +58,5 @@ impl OdometryMapping {
         );
     }
 }
+
+pub struct ICPMapping {}
