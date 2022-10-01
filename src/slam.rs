@@ -18,7 +18,7 @@ impl OdometryMapping {
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
         self.scan = scan;
     }
-    pub fn odom_mapping(&mut self, pose: &geometry::Pose2D) {
+    pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
         // these are in radian
         let angle_min = self.scan.angle_min;
         let angle_increment = self.scan.angle_increment;
@@ -49,7 +49,22 @@ impl OdometryMapping {
 pub struct ICPMapping {
     scan: sensor_msgs::msg::LaserScan,
     ref_points: Vec<geometry_msgs::msg::Point32>,
-    //    odoms: Vec<geometry::Pose2D>,
+    poses: Vec<geometry::Pose2D>,
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
+}
+
+impl ICPMapping {
+    pub fn new(init_pose: &geometry::Pose2D) -> Self {
+        ICPMapping {
+            scan: sensor_msgs::msg::LaserScan::default(),
+            ref_points: vec![],
+            poses: vec![init_pose.clone()],
+            points: vec![],
+            channels: vec![],
+        }
+    }
+    pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
+        self.scan = scan;
+    }
 }

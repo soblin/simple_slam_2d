@@ -55,18 +55,18 @@ impl Pose2D {
     }
 }
 
-pub struct Pose2DIntegrator {
-    pub pose: Pose2D,
+pub struct OdomIntegrator {
+    pub odom: Pose2D,
     pub v: f32,
     pub omega: f32,
     pub stamp: Option<builtin_interfaces::msg::Time>,
     pub stopped: bool,
 }
 
-impl Pose2DIntegrator {
+impl OdomIntegrator {
     pub fn new(x: f32, y: f32, th: f32) -> Self {
-        Pose2DIntegrator {
-            pose: Pose2D { x: x, y: y, th: th },
+        OdomIntegrator {
+            odom: Pose2D { x: x, y: y, th: th },
             v: 0.0,
             omega: 0.0,
             stamp: None,
@@ -87,7 +87,7 @@ impl Pose2DIntegrator {
         if let Some(stamp) = &self.stamp {
             if !self.stopped {
                 let dt = utils::elapsed_ms(&stamp) as f32 / 1000.0;
-                self.pose.update(self.v, self.omega, dt);
+                self.odom.update(self.v, self.omega, dt);
             }
         }
         self.stamp = Some(utils::get_stamp());
