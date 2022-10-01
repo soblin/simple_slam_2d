@@ -99,6 +99,7 @@ impl ICPMapping {
         // associate data
         let last_pose = self.poses.last().unwrap();
         // a list of (sensor_range index, ref_map_point index)
+        // TODO:change this [], []
         let mut scan_pairs = vec![];
         for (i, range) in self.scan.ranges.iter().enumerate() {
             if *range == std::f32::INFINITY {
@@ -122,16 +123,24 @@ impl ICPMapping {
         let (dd, dth) = (0.1, 0.01);
         let max_iter = 30;
         let mut est_pose = last_pose.clone();
+        let mut opt_pose = last_pose.clone();
+        let mut fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
+        let mut fmin = std::f32::INFINITY;
         for i in 1..=max_iter {
-            let f0 = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
             let fx = self.icp_score(&scan_pairs, est_pose.x + dd, est_pose.y, est_pose.th);
             let fy = self.icp_score(&scan_pairs, est_pose.x, est_pose.y + dd, est_pose.th);
             let fth = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th + dth);
-            let (dx, dy, dth) = ((fx - f0) / dd, (fy - f0) / dd, (fth - f0) / dth);
+            let (dx, dy, dth) = ((fx - fprev) / dd, (fy - fprev) / dd, (fth - fprev) / dth);
             est_pose.x -= dx * ll;
             est_pose.y -= dy * ll;
             est_pose.th -= dth * ll;
+            fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
+            if fprev < fmin {
+                fmin = fprev;
+                opt_pose = est_pose.clone();
+            }
         }
+        self.poses.push(opt_pose.clone());
     }
     fn icp_score(&self, scan_pairs: &Vec<(usize, usize)>, x: f32, y: f32, th: f32) -> f32 {
         // these are in radian
