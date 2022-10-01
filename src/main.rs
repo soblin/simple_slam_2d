@@ -56,8 +56,6 @@ impl SimpleSlam2DNode {
                 move |msg: geometry_msgs::msg::Twist| {
                     let mut pose_integrator = pose_integrator_sync.lock().unwrap();
                     pose_integrator.update_velocity(msg.linear.x as f32, msg.angular.z as f32);
-                    let mut slam = slam_sync_twist.lock().unwrap();
-                    slam.set_twist(msg);
                 },
             )?
         };
