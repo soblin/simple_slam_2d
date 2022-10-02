@@ -97,7 +97,10 @@ impl SimpleSlam2DNode {
             let mut odom_integrator = self.odom_integrator.lock().unwrap();
             odom_integrator.update_pose(&est_pose);
         }
-
+        println!(
+            "stopped = {}, x = {}, y = {}, th = {}, odom_x = {}, odom_y = {}, odom_th = {}",
+            stopped, est_pose.x, est_pose.y, est_pose.th, cur_odom.x, cur_odom.y, cur_odom.th
+        );
         // publish map
         let map_msg = sensor_msgs::msg::PointCloud {
             header: std_msgs::msg::Header {

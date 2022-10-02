@@ -49,7 +49,6 @@ impl OdometryMapping {
 pub struct ICPMapping {
     scan: Vec<(f64, f64)>, // (radius, angle)
     ref_map: Vec<geometry_msgs::msg::Point32>,
-    pub poses: Vec<geometry::Pose2D>, // poses.last() is the latest estimation
     pub points: Vec<geometry_msgs::msg::Point32>,
     pub channels: Vec<f32>,
 }
@@ -59,7 +58,6 @@ impl ICPMapping {
         ICPMapping {
             scan: vec![],
             ref_map: vec![],
-            poses: vec![],
             points: vec![],
             channels: vec![],
         }
@@ -95,15 +93,13 @@ impl ICPMapping {
                 self.points.push(p.clone());
                 self.channels.push(color_float);
             }
-            self.poses.push(pose.clone());
             return pose.clone();
         }
         // associate data
-        let last_pose = self.poses.last().unwrap();
         // corresponding indices of ref_map
         let mut scan_pairs = vec![];
         for (radius, angle) in self.scan.iter() {
-            let pose = geometry::polar2cartesian(last_pose, *radius, *angle);
+            let pose = geometry::polar2cartesian(pose, *radius, *angle);
             let (mut dmax, mut ind) = (std::f64::INFINITY, 0);
             for (j, point) in self.ref_map.iter().enumerate() {
                 let dist = (pose.x - point.x as f64).powi(2) + (pose.y - point.y as f64).powi(2);
@@ -119,8 +115,8 @@ impl ICPMapping {
         let f_thre = 0.0001;
         let (dd, dth) = (0.05, 0.01);
         let max_iter = 50;
-        let mut est_pose = last_pose.clone();
-        let mut opt_pose = last_pose.clone();
+        let mut est_pose = pose.clone();
+        let mut opt_pose = pose.clone();
         let mut fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
         let mut fmin = std::f64::INFINITY;
         for i in 1..=max_iter {
@@ -129,12 +125,12 @@ impl ICPMapping {
             let fy = self.icp_score(&scan_pairs, est_pose.x, est_pose.y + dd, est_pose.th);
             let fth = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th + dth);
             let (dx, dy, dth) = ((fx - f) / dd, (fy - f) / dd, (fth - f) / dth);
-            println!("dx = {}, dy = {}, dth = {}", dx, dy, dth);
+            //println!("dx = {}, dy = {}, dth = {}", dx, dy, dth);
             est_pose.x -= dx * ll;
             est_pose.y -= dy * ll;
             est_pose.th -= dth * ll;
             fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
-            println!("{}-th iteration: score = {}", i, fprev);
+            //println!("{}-th iteration: score = {}", i, fprev);
             if fprev < fmin {
                 fmin = fprev;
                 opt_pose = est_pose.clone();
@@ -143,14 +139,16 @@ impl ICPMapping {
                 break;
             }
         }
-        self.poses.push(opt_pose.clone());
+        self.ref_map.clear();
         for (range, angle) in self.scan.iter() {
             let p = geometry::polar2cartesian(&opt_pose, *range, *angle);
-            self.points.push(geometry_msgs::msg::Point32 {
+            let p = geometry_msgs::msg::Point32 {
                 x: p.x as f32,
                 y: p.y as f32,
                 z: 0.0,
-            });
+            };
+            self.ref_map.push(p.clone());
+            self.points.push(p.clone());
             self.channels.push(color_float);
         }
         return opt_pose;
