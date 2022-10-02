@@ -28,22 +28,19 @@ impl OdometryMapping {
         }
     }
     pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
+        let (r, g, b) = (233, 163, 38);
+        let color: u32 = r << 16 | g << 8 | b;
+        let color_float: *const f32 = &color as *const u32 as *const f32;
+        let color_float = unsafe { *color_float };
         // push new points
-        for (range, angle) in self.scan.iter() {
-            let th: f32 = pose.th + (*angle);
-            let x_glob: f32 = pose.x + (*range) * th.cos();
-            let y_glob: f32 = pose.y + (*range) * th.sin();
+        for (radius, angle) in self.scan.iter() {
+            let p = geometry::polar2cartesian(pose, *radius, *angle);
             self.points.push(geometry_msgs::msg::Point32 {
-                x: x_glob,
-                y: y_glob,
+                x: p.x,
+                y: p.y,
                 z: 0.0,
             });
-            let (r, g, b) = (233, 163, 38);
-            let color: u32 = r << 16 | g << 8 | b;
-            let color_float: *const f32 = &color as *const u32 as *const f32;
-            unsafe {
-                self.channels.push(*color_float);
-            }
+            self.channels.push(color_float);
         }
     }
 }
@@ -79,23 +76,22 @@ impl ICPMapping {
         }
     }
     pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
+        let (r, g, b) = (233, 163, 38);
+        let color: u32 = r << 16 | g << 8 | b;
+        let color_float: *const f32 = &color as *const u32 as *const f32;
+        let color_float = unsafe { *color_float };
         if self.ref_map.len() == 0 {
             // just push new points
-            for (range, angle) in self.scan.iter() {
-                let th: f32 = pose.th + (*angle);
+            for (radius, angle) in self.scan.iter() {
+                let p = geometry::polar2cartesian(pose, *radius, *angle);
                 let p = geometry_msgs::msg::Point32 {
-                    x: pose.x + (*range) * th.cos(),
-                    y: pose.y + (*range) * th.sin(),
+                    x: p.x,
+                    y: p.y,
                     z: 0.0,
                 };
                 self.ref_map.push(p.clone());
                 self.points.push(p.clone());
-                let (r, g, b) = (233, 163, 38);
-                let color: u32 = r << 16 | g << 8 | b;
-                let color_float: *const f32 = &color as *const u32 as *const f32;
-                unsafe {
-                    self.channels.push(*color_float);
-                }
+                self.channels.push(color_float);
             }
             self.poses.push(pose.clone());
             return;
@@ -104,13 +100,13 @@ impl ICPMapping {
         let last_pose = self.poses.last().unwrap();
         // corresponding indices of ref_map
         let mut scan_pairs = vec![];
-        for (range, angle) in self.scan.iter() {
-            let th: f32 = pose.th + (*angle);
-            let x: f32 = last_pose.x + (*range) * th.cos();
-            let y: f32 = last_pose.y + (*range) * th.sin();
+        for (radius, angle) in self.scan.iter() {
+            let pose = geometry::polar2cartesian(last_pose, *radius, *angle);
             let (mut dmax, mut ind) = (std::f32::INFINITY, 0);
             for (j, point) in self.ref_map.iter().enumerate() {
-                let dist = ((x - point.x).powi(2) + (y - point.y).powi(2)).sqrt().abs();
+                let dist = ((pose.x - point.x).powi(2) + (pose.y - point.y).powi(2))
+                    .sqrt()
+                    .abs();
                 if dist < dmax {
                     dmax = dist;
                     ind = j;
@@ -147,27 +143,19 @@ impl ICPMapping {
         }
         self.poses.push(opt_pose.clone());
         for (range, angle) in self.scan.iter() {
-            let th: f32 = opt_pose.th + (*angle);
-            let x_glob: f32 = opt_pose.x + (*range) * th.cos();
-            let y_glob: f32 = opt_pose.y + (*range) * th.sin();
+            let p = geometry::polar2cartesian(&opt_pose, *range, *angle);
             self.points.push(geometry_msgs::msg::Point32 {
-                x: x_glob,
-                y: y_glob,
+                x: p.x,
+                y: p.y,
                 z: 0.0,
             });
-            let (r, g, b) = (233, 163, 38);
-            let color: u32 = r << 16 | g << 8 | b;
-            let color_float: *const f32 = &color as *const u32 as *const f32;
-            unsafe {
-                self.channels.push(*color_float);
-            }
+            self.channels.push(color_float);
         }
     }
     fn icp_score(&self, scan_pairs: &Vec<usize>, x: f32, y: f32, th: f32) -> f32 {
         let mut score = 0.0;
         for (i, j) in scan_pairs.iter().enumerate() {
-            let scan: &(f32, f32) = &self.scan[i];
-            let (radius, angle) = (scan.0, scan.1 + th);
+            let (radius, angle): &(f32, f32) = &self.scan[i];
             let pt_x = x + radius * angle.cos();
             let pt_y = y + radius * angle.sin();
             let dist = (pt_x - (self.ref_map[*j].x)).powi(2) + (pt_y - self.ref_map[*j].y).powi(2);

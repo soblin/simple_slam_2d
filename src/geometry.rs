@@ -55,6 +55,15 @@ impl Pose2D {
     }
 }
 
+pub fn polar2cartesian(base: &Pose2D, radius: f32, angle: f32) -> Pose2D {
+    let th = base.th + angle;
+    return Pose2D {
+        x: base.x + radius * th.cos(),
+        y: base.y + radius * th.sin(),
+        th: th,
+    };
+}
+
 pub struct OdomIntegrator {
     pub odom: Pose2D,
     pub v: f32,
