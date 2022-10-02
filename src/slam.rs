@@ -115,9 +115,9 @@ impl ICPMapping {
             scan_pairs.push(ind)
         }
         // iteratively update last_pos to new pose
-        let ll = 0.001;
-        let f_thre = 0.001;
-        let (dd, dth) = (0.1, 0.1);
+        let ll = 0.01;
+        let f_thre = 0.0001;
+        let (dd, dth) = (0.05, 0.01);
         let max_iter = 50;
         let mut est_pose = last_pose.clone();
         let mut opt_pose = last_pose.clone();
@@ -167,6 +167,6 @@ impl ICPMapping {
                 + (pt_y - self.ref_map[j].y as f64).powi(2);
             score += dist;
         }
-        return score;
+        return score / (self.scan.len() as f64);
     }
 }
