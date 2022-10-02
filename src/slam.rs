@@ -111,37 +111,31 @@ impl ICPMapping {
             scan_pairs.push(ind)
         }
         // iteratively update last_pos to new pose
-        let ll = 0.01;
-        let f_thre = 0.0001;
+        let ll = 0.001;
+        let f_thre = 0.00001;
         let (dd, dth) = (0.05, 0.01);
         let max_iter = 50;
         let mut est_pose = pose.clone();
-        let mut opt_pose = pose.clone();
         let mut fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
-        let mut fmin = std::f64::INFINITY;
         for i in 1..=max_iter {
             let f = fprev;
             let fx = self.icp_score(&scan_pairs, est_pose.x + dd, est_pose.y, est_pose.th);
             let fy = self.icp_score(&scan_pairs, est_pose.x, est_pose.y + dd, est_pose.th);
             let fth = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th + dth);
             let (dx, dy, dth) = ((fx - f) / dd, (fy - f) / dd, (fth - f) / dth);
-            //println!("dx = {}, dy = {}, dth = {}", dx, dy, dth);
+            println!("dx = {}, dy = {}, dth = {}", dx, dy, dth);
             est_pose.x -= dx * ll;
             est_pose.y -= dy * ll;
             est_pose.th -= dth * ll;
             fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
-            //println!("{}-th iteration: score = {}", i, fprev);
-            if fprev < fmin {
-                fmin = fprev;
-                opt_pose = est_pose.clone();
-            }
-            if (f - fprev).abs() < f_thre {
+            println!("{}-th iteration: score = {}", i, fprev);
+            if (fprev - f) < 0.0 && (fprev - f).abs() < f_thre {
                 break;
             }
         }
         self.ref_map.clear();
         for (range, angle) in self.scan.iter() {
-            let p = geometry::polar2cartesian(&opt_pose, *range, *angle);
+            let p = geometry::polar2cartesian(&est_pose, *range, *angle);
             let p = geometry_msgs::msg::Point32 {
                 x: p.x as f32,
                 y: p.y as f32,
@@ -151,20 +145,20 @@ impl ICPMapping {
             self.points.push(p.clone());
             self.channels.push(color_float);
         }
-        return opt_pose;
+        return est_pose;
     }
     fn icp_score(&self, scan_pairs: &Vec<usize>, x: f64, y: f64, th: f64) -> f64 {
         let mut score = 0.0;
         for i in 0..scan_pairs.len() {
             let j = scan_pairs[i];
             let (radius, angle): &(f64, f64) = &self.scan[i];
-            let th = angle + th;
-            let pt_x = x + radius * th.cos();
-            let pt_y = y + radius * th.sin();
+            let pt_th = angle + th;
+            let pt_x = x + radius * pt_th.cos();
+            let pt_y = y + radius * pt_th.sin();
             let dist = (pt_x - self.ref_map[j].x as f64).powi(2)
                 + (pt_y - self.ref_map[j].y as f64).powi(2);
             score += dist;
         }
-        return score / (self.scan.len() as f64);
+        return score;
     }
 }
