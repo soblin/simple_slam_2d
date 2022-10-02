@@ -17,6 +17,7 @@ impl OdometryMapping {
     }
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
         // these are in radian
+        self.scan.clear(); // !important!
         let angle_min = scan.angle_min as f64;
         let angle_increment = scan.angle_increment as f64;
         for (i, range) in scan.ranges.iter().enumerate() {
@@ -65,6 +66,7 @@ impl ICPMapping {
     }
     pub fn set_scan(&mut self, scan: sensor_msgs::msg::LaserScan) {
         // these are in radian
+        self.scan.clear(); // !important!
         let angle_min = scan.angle_min as f64;
         let angle_increment = scan.angle_increment as f64;
         for (i, range) in scan.ranges.iter().enumerate() {
@@ -113,8 +115,8 @@ impl ICPMapping {
             scan_pairs.push(ind)
         }
         // iteratively update last_pos to new pose
-        let ll = 0.0001;
-        let f_thre = 0.01;
+        let ll = 0.001;
+        let f_thre = 0.001;
         let (dd, dth) = (0.1, 0.1);
         let max_iter = 50;
         let mut est_pose = last_pose.clone();
