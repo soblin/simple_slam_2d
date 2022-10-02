@@ -8,7 +8,7 @@ pub struct SimpleSlam2DNode {
     twist_sub: Arc<rclrs::Subscription<geometry_msgs::msg::Twist>>,
     map_pub: rclrs::Publisher<sensor_msgs::msg::PointCloud>,
     odom_pub: rclrs::Publisher<nav_msgs::msg::Odometry>,
-    slam: Arc<Mutex<simple_slam_2d::slam::OdometryMapping>>,
+    slam: Arc<Mutex<simple_slam_2d::slam::ICPMapping>>,
     odom_integrator: Arc<Mutex<simple_slam_2d::geometry::OdomIntegrator>>,
     params: simple_slam_2d::param::SimpleSlam2DParams,
 }
@@ -29,7 +29,7 @@ impl SimpleSlam2DNode {
         let mut node = rclrs::Node::new(context, "simple_slam_2d_node")?;
         // TODO: initial pose
         // SimpleSlam2D
-        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::OdometryMapping::new()));
+        let slam = Arc::new(Mutex::new(simple_slam_2d::slam::ICPMapping::new()));
         // odometry integral
         let odom_integrator = Arc::new(Mutex::new(simple_slam_2d::geometry::OdomIntegrator::new(
             0.0, 0.0, 0.0,
@@ -91,12 +91,12 @@ impl SimpleSlam2DNode {
 
         // do SLAM
         let mut slam = self.slam.lock().unwrap();
+        let mut est_pose = cur_odom.clone();
         if !stopped {
-            slam.do_slam(&cur_odom);
-            // self.odom_integrator.lock().unwrap().update_pose(<new estimated pose>)
-            // and return <new estimated pose> in this block
+            est_pose = slam.do_slam(&cur_odom);
+            let mut odom_integrator = self.odom_integrator.lock().unwrap();
+            odom_integrator.update_pose(&est_pose);
         }
-        let est_pose = cur_odom;
 
         // publish map
         let map_msg = sensor_msgs::msg::PointCloud {

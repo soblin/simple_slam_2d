@@ -54,7 +54,7 @@ pub struct ICPMapping {
 }
 
 impl ICPMapping {
-    pub fn new(init_pose: &geometry::Pose2D) -> Self {
+    pub fn new() -> Self {
         ICPMapping {
             scan: vec![],
             ref_map: vec![],
@@ -75,7 +75,7 @@ impl ICPMapping {
             self.scan.push((*range, angle));
         }
     }
-    pub fn do_slam(&mut self, pose: &geometry::Pose2D) {
+    pub fn do_slam(&mut self, pose: &geometry::Pose2D) -> geometry::Pose2D {
         let (r, g, b) = (233, 163, 38);
         let color: u32 = r << 16 | g << 8 | b;
         let color_float: *const f32 = &color as *const u32 as *const f32;
@@ -94,7 +94,7 @@ impl ICPMapping {
                 self.channels.push(color_float);
             }
             self.poses.push(pose.clone());
-            return;
+            return pose.clone();
         }
         // associate data
         let last_pose = self.poses.last().unwrap();
@@ -115,10 +115,10 @@ impl ICPMapping {
             scan_pairs.push(ind)
         }
         // iteratively update last_pos to new pose
-        let ll = 0.001;
+        let ll = 0.01;
         let f_thre = 0.01;
         let (dd, dth) = (0.1, 0.01);
-        let max_iter = 30;
+        let max_iter = 50;
         let mut est_pose = last_pose.clone();
         let mut opt_pose = last_pose.clone();
         let mut fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
@@ -133,6 +133,7 @@ impl ICPMapping {
             est_pose.y -= dy * ll;
             est_pose.th -= dth * ll;
             fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
+            println!("{}-th iteration: score = {}", i, fprev);
             if fprev < fmin {
                 fmin = fprev;
                 opt_pose = est_pose.clone();
@@ -151,14 +152,16 @@ impl ICPMapping {
             });
             self.channels.push(color_float);
         }
+        return opt_pose;
     }
     fn icp_score(&self, scan_pairs: &Vec<usize>, x: f32, y: f32, th: f32) -> f32 {
         let mut score = 0.0;
-        for (i, j) in scan_pairs.iter().enumerate() {
+        for i in 0..scan_pairs.len() {
+            let j = scan_pairs[i];
             let (radius, angle): &(f32, f32) = &self.scan[i];
             let pt_x = x + radius * angle.cos();
             let pt_y = y + radius * angle.sin();
-            let dist = (pt_x - (self.ref_map[*j].x)).powi(2) + (pt_y - self.ref_map[*j].y).powi(2);
+            let dist = (pt_x - (self.ref_map[j].x)).powi(2) + (pt_y - self.ref_map[j].y).powi(2);
             score += dist;
         }
         return score;
