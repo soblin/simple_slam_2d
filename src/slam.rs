@@ -97,15 +97,16 @@ impl ICPMapping {
         }
         // associate data
         // corresponding indices of ref_map
-        let mut scan_pairs = vec![];
+        let mut scan_pairs: Vec<i64> = vec![];
+        let dthre = 0.2;
         for (radius, angle) in self.scan.iter() {
             let pose = geometry::polar2cartesian(pose, *radius, *angle);
-            let (mut dmax, mut ind) = (std::f64::INFINITY, 0);
+            let (mut dmax, mut ind) = (std::f64::INFINITY, -1);
             for (j, point) in self.ref_map.iter().enumerate() {
                 let dist = (pose.x - point.x as f64).powi(2) + (pose.y - point.y as f64).powi(2);
-                if dist < dmax {
+                if dist < dmax && dist < dthre * dthre {
                     dmax = dist;
-                    ind = j;
+                    ind = j as i64;
                 }
             }
             scan_pairs.push(ind)
@@ -113,8 +114,8 @@ impl ICPMapping {
         // iteratively update last_pos to new pose
         let ll = 0.001;
         let f_thre = 0.00001;
-        let (dd, dth) = (0.05, 0.01);
-        let max_iter = 50;
+        let (dd, dth) = (0.01, 0.01);
+        let max_iter = 100;
         let mut est_pose = pose.clone();
         let mut fprev = self.icp_score(&scan_pairs, est_pose.x, est_pose.y, est_pose.th);
         for i in 1..=max_iter {
@@ -147,16 +148,19 @@ impl ICPMapping {
         }
         return est_pose;
     }
-    fn icp_score(&self, scan_pairs: &Vec<usize>, x: f64, y: f64, th: f64) -> f64 {
+    fn icp_score(&self, scan_pairs: &Vec<i64>, x: f64, y: f64, th: f64) -> f64 {
         let mut score = 0.0;
         for i in 0..scan_pairs.len() {
             let j = scan_pairs[i];
+            if j == -1 {
+                continue;
+            }
             let (radius, angle): &(f64, f64) = &self.scan[i];
             let pt_th = angle + th;
             let pt_x = x + radius * pt_th.cos();
             let pt_y = y + radius * pt_th.sin();
-            let dist = (pt_x - self.ref_map[j].x as f64).powi(2)
-                + (pt_y - self.ref_map[j].y as f64).powi(2);
+            let dist = (pt_x - self.ref_map[j as usize].x as f64).powi(2)
+                + (pt_y - self.ref_map[j as usize].y as f64).powi(2);
             score += dist;
         }
         return score;
